@@ -452,6 +452,7 @@ function loadCalendarCoverage() {
             if (currentSportFilter) {
                 filteredBookings = bookings.filter(b => b.sport_type === currentSportFilter);
             }
+
             // Calculate coverage per date
             const coverage = {};
             filteredBookings.forEach(b => {
