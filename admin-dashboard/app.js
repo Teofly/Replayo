@@ -529,7 +529,7 @@ async function renderDailyTimeline(dateStr) {
                 })();
 
                 html += `
-                    <div class="timeline-booking-bar status-${booking.status || "pending"} sport-${court.sport_type || 'other'} ${widthPercent < 8 ? "short-booking" : ""}"
+                    <div class="timeline-booking-bar status-${booking.status || "pending"} sport-${court.sport_type || 'other'}"
                          style="left: ${leftPercent}%; width: ${widthPercent}%;"
                          title="${booking.customer_name} | ${bookingStart} - ${endTime}"
                          onclick="showBookingDetails('${booking.id}')">
