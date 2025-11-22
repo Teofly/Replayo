@@ -727,7 +727,8 @@ app.delete('/api/matches/:matchId', async (req, res) => {
 app.put('/api/matches/:matchId', async (req, res) => {
     try {
         const { matchId } = req.params;
-        const { sport_type, location, match_date, player_ids } = req.body;
+        const { sport_type, location, match_date, player_ids, players } = req.body;
+        const finalPlayerIds = player_ids || players;
         
         const result = await pool.query(
             `UPDATE matches 
@@ -737,7 +738,7 @@ app.put('/api/matches/:matchId', async (req, res) => {
                  player_ids = COALESCE($4, player_ids)
              WHERE id = $5
              RETURNING *`,
-            [sport_type, location, match_date, player_ids, matchId]
+            [sport_type, location, match_date, finalPlayerIds, matchId]
         );
         
         if (result.rows.length === 0) {
