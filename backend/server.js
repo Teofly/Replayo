@@ -1379,7 +1379,12 @@ app.delete("/api/bookings/:id", async (req, res) => {
 app.put('/api/bookings/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { court_id, booking_date, start_time, end_time, customer_name, customer_email, customer_phone, num_players, notes, payment_status } = req.body;
+    const { court_id, booking_date, start_time, end_time, customer_name, customer_email, customer_phone, num_players, notes, payment_status, players } = req.body;
+
+    // Estrai player_names da players
+    const playerNames = players && Array.isArray(players)
+      ? players.map(p => p.player_name || p.name).filter(n => n)
+      : null;
 
     // Calcola duration_minutes se abbiamo start_time e end_time
     let duration_minutes = null;
@@ -1402,9 +1407,10 @@ app.put('/api/bookings/:id', async (req, res) => {
        num_players = COALESCE($9, num_players),
        notes = COALESCE($10, notes),
        payment_status = COALESCE($11, payment_status),
+       player_names = COALESCE($12, player_names),
        updated_at = CURRENT_TIMESTAMP
-       WHERE id = $12 RETURNING *`,
-      [court_id, booking_date, start_time, end_time, duration_minutes, customer_name, customer_email, customer_phone, num_players, notes, payment_status, id]
+       WHERE id = $13 RETURNING *`,
+      [court_id, booking_date, start_time, end_time, duration_minutes, customer_name, customer_email, customer_phone, num_players, notes, payment_status, playerNames, id]
     );
 
     if (result.rows.length === 0) {
