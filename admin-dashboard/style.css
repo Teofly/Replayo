@@ -1274,18 +1274,9 @@ body {
     background: linear-gradient(135deg, #f59e0b, #d97706) !important; /* Arancione/Giallo */
 }
 
-/* Colori prenotazioni per sport - CONFIRMED (toni di verde) */
-.timeline-booking-bar.status-confirmed.sport-padel {
-    background: linear-gradient(135deg, #84cc16, #65a30d) !important; /* Verde lime */
-}
-.timeline-booking-bar.status-confirmed.sport-tennis {
-    background: linear-gradient(135deg, #22c55e, #16a34a) !important; /* Verde smeraldo */
-}
-.timeline-booking-bar.status-confirmed.sport-calcetto {
-    background: linear-gradient(135deg, #14b8a6, #0d9488) !important; /* Verde acqua/teal */
-}
-.timeline-booking-bar.status-confirmed.sport-other {
-    background: linear-gradient(135deg, #10b981, #059669) !important; /* Verde emerald */
+/* Colori prenotazioni - CONFIRMED (stesso colore blu per tutti gli sport) */
+.timeline-booking-bar.status-confirmed {
+    background: linear-gradient(135deg, #3b82f6, #2563eb) !important; /* Blu */
 }
 
 /* Cancelled - sempre rosso opaco */
