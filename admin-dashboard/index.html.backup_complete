@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RePlayo Admin Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Hamburger Button for Mobile -->
+    <button class="hamburger-btn" id="hamburger-btn">☰</button>
+
+    <!-- Sidebar Overlay for Mobile -->
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <div class="dashboard">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="logo">
+                <img src="replayo-logo.png" alt="RePlayo" class="logo-img">
+                <h1>RePlayo</h1>
+                <p>Admin Dashboard</p>
+            </div>
+            <nav class="nav">
+                <a href="#" class="nav-item active" data-page="overview">📊 Stato</a>
+                <a href="#" class="nav-item" data-page="bookings">📅 Prenotazioni</a>
+                <a href="#" class="nav-item" data-page="courts">🏟️ Campi</a>
+                <a href="#" class="nav-item" data-page="players">👤 Anagrafica</a>
+                <a href="#" class="nav-item" data-page="matches">📹 Videos</a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="header">
+                <h2 id="page-title">Stato</h2>
+                <div class="header-actions">
+                    <span class="api-status" id="api-status">🔴 Checking...</span>
+                </div>
+            </header>
+
+            <div class="content">
+                <!-- Stato Page -->
+                <div id="page-overview" class="page active">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon">📹</div>
+                            <div class="stat-info">
+                                <h3 id="total-videos">-</h3>
+                                <p>Total Videos</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">💾</div>
+                            <div class="stat-info">
+                                <h3 id="total-storage">-</h3>
+                                <p>Storage Used</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">👁️</div>
+                            <div class="stat-info">
+                                <h3 id="total-views">-</h3>
+                                <p>Total Views</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">⬇️</div>
+                            <div class="stat-info">
+                                <h3 id="total-downloads">-</h3>
+                                <p>Total Downloads</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <h3>Environment Status</h3>
+                        <div class="info-box" id="env-status">
+                            <p>Checking API connection...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bookings Page -->
+                <div id="page-bookings" class="page">
+                    <div class="section">
+                        <h3>Calendario Prenotazioni</h3>
+                        <div class="calendar-container">
+                            <div class="calendar-header">
+                                <div class="calendar-nav">
+                                    <button id="prev-month">&lt; Mese Prec</button>
+                                    <button id="next-month">Mese Succ &gt;</button>
+                                    <button id="today-btn">Oggi</button>
+                                </div>
+                                <h4 id="calendar-month-year">Novembre 2025</h4>
+                                <button class="btn btn-primary" id="new-booking-btn">+ Nuova Prenotazione</button>
+                            </div>
+                            <div class="calendar-grid" id="calendar-grid"></div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <h3>Prenotazioni del Giorno: <span id="selected-date-display">-</span></h3>
+                        <div id="daily-bookings-timeline" class="timeline-container"></div>
+                    </div>
+                </div>
+
+                <!-- Courts Page -->
+                <div id="page-courts" class="page">
+                    <div class="section">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                            <h3 style="margin-bottom: 0;">Gestione Campi</h3>
+                            <button class="btn btn-primary" id="new-court-btn">+ Nuovo Campo</button>
+                        </div>
+                        <div id="courts-list"></div>
+                    </div>
+                </div>
+
+                <!-- Players Page -->
+                <div id="page-players" class="page">
+                    <div class="section">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                            <h3 style="margin-bottom: 0;">Anagrafica Giocatori</h3>
+                            <button class="btn btn-primary" id="new-player-btn">+ Nuovo Giocatore</button>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 1.5rem;">
+                            <input type="text" id="player-search" placeholder="Cerca giocatore per nome, email o telefono...">
+                        </div>
+                        <div id="players-list"></div>
+                    </div>
+                </div>
+
+                <!-- Matches Page -->
+                <div id="page-matches" class="page">
+                        <h3>Create New Match</h3>
+                        <form id="create-match-form" class="form">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Codice Prenotazione</label>
+                                    <input type="text" id="booking-code" placeholder="PADEL2024" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Sport Type</label>
+                                    <select id="sport-type" required>
+                                        <option value="padel">Padel</option>
+                                        <option value="tennis">Tennis</option>
+                                        <option value="soccer">Soccer</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Location</label>
+                                    <input type="text" id="location" placeholder="Centro Sportivo Milano" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Match Date</label>
+                                    <input type="datetime-local" id="match-date" required>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Players (comma separated)</label>
+                                <input type="text" id="players" placeholder="Mario Rossi, Luigi Verdi, Giovanni Bianchi, Paolo Neri" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Create Match</button>
+                        </form>
+                        <div id="match-result" class="result"></div>
+                
+                
+                    <div id="search-matches-section" class="section" style="margin-top: 2rem;">
+                        <h3>Cerca Partite</h3>
+                        <form id="search-matches-form" class="form">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Codice Prenotazione</label>
+                                    <input type="text" id="search-booking-code" placeholder="Search by booking code">
+                                </div>
+                                <div class="form-group">
+                                    <label>Location</label>
+                                    <input type="text" id="search-location" placeholder="Search by location">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Sport Type</label>
+                                    <select id="search-sport-type">
+                                        <option value="">Tutti gli Sport</option>
+                                        <option value="padel">Padel</option>
+                                        <option value="tennis">Tennis</option>
+                                        <option value="soccer">Soccer</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Data Da</label>
+                                    <input type="date" id="search-date-from">
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Search</button>
+                        </form>
+                        <div id="search-results" style="margin-top: 2rem;"></div>
+                    </div>
+
+                    <!-- Edit Match Modal -->
+                    <div id="edit-modal" class="modal" style="display: none;">
+                        <div class="modal-content">
+                            <h3>Edit Match</h3>
+                            <form id="edit-match-form" class="form">
+                                <input type="hidden" id="edit-match-id">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Codice Prenotazione</label>
+                                        <input type="text" id="edit-booking-code" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Sport Type</label>
+                                        <select id="edit-sport-type" required>
+                                            <option value="padel">Padel</option>
+                                            <option value="tennis">Tennis</option>
+                                            <option value="soccer">Soccer</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Location</label>
+                                        <input type="text" id="edit-location" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Match Date</label>
+                                        <input type="datetime-local" id="edit-match-date" required>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Players (comma separated)</label>
+                                    <input type="text" id="edit-players" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Access Password</label>
+                                    <input type="text" id="edit-password" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>
+                                        <input type="checkbox" id="edit-is-active">
+                                        Active
+                                    </label>
+                                </div>
+                                <div style="display: flex; gap: 1rem;">
+                                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                                    <button type="button" class="btn btn-secondary" id="cancel-edit">Cancel</button>
+                                </div>
+                            </form>
+                            <div id="edit-result" class="result"></div>
+                        </div>
+                    </div>
+
+                    <!-- Upload Video Modal -->
+                    <div id="upload-video-modal" class="modal" style="display: none;">
+                        <div class="modal-content">
+                            <h3>Upload Video</h3>
+                            <p id="upload-match-info" style="color: var(--primary); margin-bottom: 1rem;"></p>
+                            <form id="upload-video-form-modal" class="form">
+                                <input type="hidden" id="upload-match-id">
+                                <div class="form-group">
+                                    <label>Video File</label>
+                                    <input type="file" id="video-file-input" accept="video/*" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Video Title</label>
+                                    <input type="text" id="video-title" placeholder="Es: Highlight partita">
+                                </div>
+                                <div id="upload-progress" style="display: none; margin: 1rem 0;">
+                                    <div style="background: var(--border); border-radius: 10px; overflow: hidden;">
+                                        <div id="progress-bar" style="background: var(--success); height: 20px; width: 0%; transition: width 0.3s;"></div>
+                                    </div>
+                                    <p id="progress-text" style="text-align: center; margin-top: 0.5rem;">0%</p>
+                                </div>
+                                <div style="display: flex; gap: 1rem;">
+                                    <button type="submit" class="btn btn-success">Upload</button>
+                                    <button type="button" class="btn btn-secondary" onclick="closeUploadModal()">Cancel</button>
+                                </div>
+                            </form>
+                            <div id="upload-result" class="result"></div>
+                        </div>
+                    </div>
+                </div>
+
+        </main>
+    </div>
+
+    <!-- Booking Modal -->
+    <div id="booking-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h3>Nuova Prenotazione</h3>
+            <form id="booking-form" class="form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Campo</label>
+                        <select id="booking-court" required></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Data</label>
+                        <input type="date" id="booking-date" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Orario Disponibile</label>
+                    <div id="booking-timeline-container" class="booking-timeline-container">
+                        <div class="booking-timeline-header" id="booking-timeline-header"></div>
+                        <div class="booking-timeline-slots" id="booking-timeline-slots"></div>
+                    </div>
+                    <input type="hidden" id="booking-time">
+                    <small id="selected-slot-info" style="color: var(--accent-primary); margin-top: 4px; display: block;"></small>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Nome Riferimento</label>
+                        <input type="text" id="booking-customer-name" required placeholder="Nome cliente">
+                    </div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="booking-customer-email" placeholder="email@esempio.it">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Telefono</label>
+                        <input type="tel" id="booking-customer-phone" placeholder="+39 333 1234567">
+                    </div>
+                    <div class="form-group">
+                        <label>Numero Giocatori</label>
+                        <input type="number" id="booking-num-players" min="1" max="14" value="4">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Giocatori (cerca nell'anagrafica)</label>
+                    <input type="text" id="booking-player-search" placeholder="Cerca giocatore..." autocomplete="off">
+                    <div id="player-suggestions" style="display: none; background: var(--bg-dark); border: 1px solid var(--accent-primary); border-radius: 8px; max-height: 150px; overflow-y: auto; margin-top: 4px;"></div>
+                    <div id="selected-players" style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem;"></div>
+                    <small style="color: var(--text-secondary);">Clicca sui suggerimenti o premi Invio per aggiungere un nome libero</small>
+                </div>
+                <div class="form-group">
+                    <label>Note</label>
+                    <input type="text" id="booking-notes" placeholder="Note aggiuntive...">
+                </div>
+                <div style="display: flex; gap: 1rem;">
+                    <button type="submit" class="btn btn-primary" id="booking-submit-btn">Crea Prenotazione</button>
+                    <button type="button" class="btn btn-secondary" id="cancel-booking">Annulla</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Court Modal -->
+    <div id="court-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h3 id="court-modal-title">Nuovo Campo</h3>
+            <form id="court-form" class="form">
+                <input type="hidden" id="court-id">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Nome Campo</label>
+                        <input type="text" id="court-name" required placeholder="Campo Padel 1">
+                    </div>
+                    <div class="form-group">
+                        <label>Tipo Sport</label>
+                        <select id="court-sport-type" required>
+                            <option value="padel">Padel</option>
+                            <option value="tennis">Tennis</option>
+                            <option value="calcetto">Calcetto</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Durata Slot (minuti)</label>
+                        <input type="number" id="court-duration" value="90" min="30" max="180" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Numero Giocatori</label>
+                        <input type="number" id="court-num-players" value="4" min="1" max="14" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Prezzo per Giocatore</label>
+                        <input type="number" id="court-price" value="10" step="0.5" min="0" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Descrizione</label>
+                    <input type="text" id="court-description" placeholder="Descrizione campo...">
+                </div>
+                <div class="form-group">
+                    <label><input type="checkbox" id="court-is-active" checked> Campo Attivo</label>
+                </div>
+                <div style="display: flex; gap: 1rem;">
+                    <button type="submit" class="btn btn-primary">Salva</button>
+                    <button type="button" class="btn btn-secondary" id="cancel-court">Annulla</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Player Modal -->
+    <div id="player-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h3 id="player-modal-title">Nuovo Giocatore</h3>
+            <form id="player-form" class="form">
+                <input type="hidden" id="player-id">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Nome</label>
+                        <input type="text" id="player-first-name" required placeholder="Mario">
+                    </div>
+                    <div class="form-group">
+                        <label>Cognome</label>
+                        <input type="text" id="player-last-name" required placeholder="Rossi">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="player-email" placeholder="mario@esempio.it">
+                    </div>
+                    <div class="form-group">
+                        <label>Telefono</label>
+                        <input type="tel" id="player-phone" placeholder="+39 333 1234567">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Note</label>
+                    <input type="text" id="player-notes" placeholder="Note aggiuntive...">
+                </div>
+                <div style="display: flex; gap: 1rem;">
+                    <button type="submit" class="btn btn-primary">Salva</button>
+                    <button type="button" class="btn btn-secondary" id="cancel-player">Annulla</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Video Player Modal -->
+    <div id="video-player-modal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 1000px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 id="video-modal-title">Video Partita</h3>
+                <button type="button" class="btn btn-secondary" id="close-video-modal">Chiudi</button>
+            </div>
+            <div id="video-list-container"></div>
+            <div id="video-player-container" style="margin-top: 1rem;"></div>
+        </div>
+    </div>
+
+    <!-- Booking Details Modal -->
+    <div id="booking-details-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h3 id="booking-details-title">Dettagli Prenotazione</h3>
+            <div id="booking-details-content" style="margin: 1.5rem 0;"></div>
+            <div id="booking-details-actions" style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                <button type="button" class="btn btn-success" id="confirm-booking-btn" style="display: none;">
+                    Conferma Prenotazione
+                </button>
+                <button type="button" class="btn btn-primary" id="edit-booking-btn">
+                    Modifica
+                </button>
+                <button type="button" class="btn btn-danger" id="delete-booking-btn">
+                    Cancella
+                </button>
+                <button type="button" class="btn btn-secondary" id="close-booking-details">
+                    Chiudi
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

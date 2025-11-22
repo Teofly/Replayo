@@ -1,0 +1,1 @@
+.btn-copy { background: var(--primary); color: white; border: none; padding: 2px 8px; border-radius: 4px; cursor: pointer; margin-left: 8px; font-size: 12px; } .btn-copy:hover { background: var(--accent); }

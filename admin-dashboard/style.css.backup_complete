@@ -1,0 +1,1367 @@
+:root {
+    --bg-dark: #0a0e27;
+    --bg-card: #1a1f3a;
+    --accent-primary: #00fff5;
+    --accent-secondary: #7b2cbf;
+    --text-primary: #ffffff;
+    --text-secondary: #a0a0a0;
+    --success: #00ff88;
+    --warning: #ffaa00;
+    --danger: #ff3366;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: var(--bg-dark);
+    color: var(--text-primary);
+    overflow-x: hidden;
+}
+
+.dashboard {
+    display: flex;
+    min-height: 100vh;
+}
+
+/* Sidebar */
+.sidebar {
+    width: 280px;
+    background: var(--bg-card);
+    padding: 2rem 0;
+    border-right: 1px solid rgba(0, 255, 245, 0.1);
+    position: fixed;
+    height: 100vh;
+    overflow-y: auto;
+}
+
+.logo {
+    padding: 0 2rem 2rem;
+    border-bottom: 1px solid rgba(0, 255, 245, 0.1);
+    margin-bottom: 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.logo-img {
+    width: 80px;
+    height: 80px;
+    margin-bottom: 1rem;
+    border-radius: 16px;
+    box-shadow: 0 0 20px rgba(0, 255, 245, 0.3);
+}
+
+.logo h1 {
+    font-size: 2rem;
+    color: var(--accent-primary);
+    margin-bottom: 0.5rem;
+    text-align: center;
+}
+
+.logo p {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+.nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0 1rem;
+}
+
+.nav-item {
+    padding: 1rem 1.5rem;
+    color: var(--text-secondary);
+    text-decoration: none;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.nav-item:hover {
+    background: rgba(0, 255, 245, 0.1);
+    color: var(--accent-primary);
+}
+
+.nav-item.active {
+    background: linear-gradient(135deg, rgba(0, 255, 245, 0.2), rgba(123, 44, 191, 0.2));
+    color: var(--accent-primary);
+    border-left: 3px solid var(--accent-primary);
+}
+
+/* Main Content */
+.main-content {
+    flex: 1;
+    margin-left: 280px;
+    padding: 2rem;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid rgba(0, 255, 245, 0.1);
+}
+
+.header h2 {
+    font-size: 2rem;
+    color: var(--text-primary);
+}
+
+.api-status {
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    background: var(--bg-card);
+}
+
+/* Pages */
+.page {
+    display: none;
+}
+
+.page.active {
+    display: block;
+}
+
+/* Stats Grid */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.stat-card {
+    background: var(--bg-card);
+    padding: 1.5rem;
+    border-radius: 12px;
+    border: 1px solid rgba(0, 255, 245, 0.1);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    transition: all 0.3s ease;
+}
+
+.stat-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 30px rgba(0, 255, 245, 0.2);
+}
+
+.stat-icon {
+    font-size: 2.5rem;
+}
+
+.stat-info h3 {
+    font-size: 2rem;
+    color: var(--accent-primary);
+    margin-bottom: 0.25rem;
+}
+
+.stat-info p {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+/* Section */
+.section {
+    background: var(--bg-card);
+    padding: 2rem;
+    border-radius: 12px;
+    border: 1px solid rgba(0, 255, 245, 0.1);
+    margin-bottom: 2rem;
+}
+
+.section h3 {
+    font-size: 1.5rem;
+    margin-bottom: 1.5rem;
+    color: var(--accent-primary);
+}
+
+/* Forms */
+.form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.form-group label {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.form-group input,
+.form-group select {
+    padding: 0.75rem;
+    background: var(--bg-dark);
+    border: 1px solid rgba(0, 255, 245, 0.2);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 1rem;
+    transition: all 0.3s ease;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 10px rgba(0, 255, 245, 0.3);
+}
+
+.form-group input[type="file"] {
+    padding: 0.5rem;
+}
+
+.file-info {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    margin-top: 0.5rem;
+}
+
+/* Buttons */
+.btn {
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+    color: var(--bg-dark);
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 30px rgba(0, 255, 245, 0.4);
+}
+
+.btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Upload Progress */
+.upload-progress {
+    margin-top: 1rem;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background: var(--bg-dark);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+    transition: width 0.3s ease;
+    width: 0%;
+}
+
+#progress-text {
+    text-align: center;
+    color: var(--accent-primary);
+    font-weight: 600;
+}
+
+/* Result */
+.result {
+    margin-top: 1rem;
+    padding: 1rem;
+    border-radius: 8px;
+    display: none;
+}
+
+.result.success {
+    background: rgba(0, 255, 136, 0.1);
+    border: 1px solid var(--success);
+    color: var(--success);
+    display: block;
+}
+
+.result.error {
+    background: rgba(255, 51, 102, 0.1);
+    border: 1px solid var(--danger);
+    color: var(--danger);
+    display: block;
+}
+
+/* Info Box */
+.info-box {
+    background: var(--bg-dark);
+    padding: 1.5rem;
+    border-radius: 8px;
+    border: 1px solid rgba(0, 255, 245, 0.2);
+}
+
+.info-box p {
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+
+.info {
+    color: var(--text-secondary);
+    line-height: 1.6;
+    margin-bottom: 1rem;
+}
+
+/* Code Block */
+.code-block {
+    background: var(--bg-dark);
+    padding: 1.5rem;
+    border-radius: 8px;
+    border: 1px solid rgba(0, 255, 245, 0.2);
+    overflow-x: auto;
+}
+
+.code-block code {
+    color: var(--accent-primary);
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    white-space: pre;
+}
+
+/* Modal */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: var(--bg-card);
+    padding: 2rem;
+    border-radius: 12px;
+    border: 1px solid rgba(0, 255, 245, 0.2);
+    max-width: 800px;
+    width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+/* Match Cards */
+.match-card {
+    background: var(--bg-card);
+    padding: 1.5rem;
+    border-radius: 12px;
+    border: 1px solid rgba(0, 255, 245, 0.1);
+    margin-bottom: 1rem;
+    transition: all 0.3s ease;
+}
+
+.match-card:hover {
+    border-color: var(--accent-primary);
+    transform: translateY(-2px);
+}
+
+.match-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.match-card-title {
+    font-size: 1.2rem;
+    color: var(--accent-primary);
+}
+
+.match-card-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.match-card-body {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.match-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.match-detail-label {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.match-detail-value {
+    color: var(--text-primary);
+    font-size: 1rem;
+}
+
+.badge {
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.badge-active {
+    background: rgba(0, 255, 136, 0.2);
+    color: var(--success);
+}
+
+.badge-inactive {
+    background: rgba(255, 51, 102, 0.2);
+    color: var(--danger);
+}
+
+/* Button Secondary */
+.btn-secondary {
+    background: var(--bg-dark);
+    color: var(--text-primary);
+    border: 1px solid rgba(0, 255, 245, 0.2);
+}
+
+.btn-secondary:hover {
+    border-color: var(--accent-primary);
+}
+
+.btn-small {
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+}
+
+.btn-danger {
+    background: var(--danger);
+    color: white;
+}
+
+.btn-danger:hover {
+    opacity: 0.8;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-dark);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--accent-primary);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-secondary);
+}
+
+/* ========================================
+   HAMBURGER MENU & MOBILE NAVIGATION
+   ======================================== */
+.hamburger-btn {
+    display: none;
+    position: fixed;
+    top: 1rem;
+    left: 1rem;
+    z-index: 1001;
+    background: var(--bg-card);
+    border: 1px solid var(--accent-primary);
+    border-radius: 8px;
+    padding: 0.75rem;
+    cursor: pointer;
+    color: var(--accent-primary);
+    font-size: 1.5rem;
+}
+
+.sidebar-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 999;
+}
+
+/* ========================================
+   TIMELINE VIEW FOR DAILY BOOKINGS
+   ======================================== */
+.timeline-container {
+    overflow: visible;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    /* overflow-x: auto; - rimosso */
+}
+
+.timeline-header {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 1px;
+    background: var(--bg-dark);
+    padding: 0.5rem 0.5rem 0.5rem 0;
+    border-radius: 8px 8px 0 0;
+    
+}
+
+.timeline-court-label {
+    display: flex;
+    align-items: center;
+    padding: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--accent-primary);
+    font-weight: 600;
+}
+
+.timeline-hours-container {
+    display: grid;
+    grid-template-columns: repeat(14, 2fr);
+    gap: 0;
+}
+
+.timeline-hour-label {
+    text-align: left;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    padding: 0.25rem 0;
+    border-left: 1px solid rgba(0, 255, 245, 0.2);
+    padding-left: 4px;
+}
+
+.timeline-hour {
+    text-align: center;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    padding: 0.25rem;
+}
+
+.timeline-row {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 1px;
+    background: var(--bg-dark);
+    min-height: 50px; height: auto;
+    
+}
+
+.timeline-court-name {
+    display: flex;
+    align-items: center;
+    padding: 0.5rem;
+    background: var(--bg-card);
+    color: var(--accent-primary);
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.timeline-slots-container {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(28, minmax(0, 1fr));
+    gap: 1px;
+    background: var(--bg-card);
+}
+
+.timeline-slot {
+    background: rgba(0, 255, 136, 0.05);
+    border-right: 1px dashed rgba(0, 255, 136, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    min-height: 50px;
+    flex: 1 1 0;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.timeline-slot:hover:not(.occupied) {
+    background: rgba(0, 255, 136, 0.15);
+}
+
+.timeline-slot.occupied {
+    cursor: default;
+    background: transparent;
+}
+
+.timeline-slot:nth-child(2n) {
+    border-right: 1px solid rgba(0, 255, 245, 0.2);
+}
+
+.timeline-booking-bar {
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 0.5rem 0.75rem;
+    z-index: 10;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 255, 245, 0.3);
+    overflow: hidden;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.timeline-booking-bar:hover {
+    transform: scaleY(1.05);
+    box-shadow: 0 4px 12px rgba(0, 255, 245, 0.5);
+}
+
+.timeline-booking-bar .booking-name {
+    color: var(--bg-dark);
+    font-weight: 700;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.timeline-booking-bar .booking-time {
+    color: rgba(10, 10, 15, 0.7);
+    font-size: 0.7rem;
+    font-weight: 500;
+}
+
+.timeline-booking {
+    background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+    border-radius: 4px;
+    padding: 0.25rem 0.5rem;
+    color: var(--bg-dark);
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ========================================
+   BOOKING DETAILS MODAL
+   ======================================== */
+.booking-details-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+}
+
+.booking-detail-item {
+    background: var(--bg-dark);
+    padding: 1rem;
+    border-radius: 8px;
+    border: 1px solid rgba(0, 255, 245, 0.1);
+}
+
+.booking-detail-item .detail-label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.25rem;
+}
+
+.booking-detail-item .detail-value {
+    display: block;
+    font-size: 1rem;
+    color: var(--text-primary);
+}
+
+.btn-success {
+    background: linear-gradient(135deg, var(--success), #00b894);
+    color: var(--bg-dark);
+    border: none;
+    font-weight: 600;
+}
+
+.btn-success:hover {
+    box-shadow: 0 0 15px rgba(0, 255, 136, 0.4);
+    transform: translateY(-2px);
+}
+
+/* ========================================
+   BOOKING CARDS IMPROVED
+   ======================================== */
+.booking-card {
+    background: var(--bg-card);
+    padding: 1.25rem;
+    border-radius: 12px;
+    border: 1px solid rgba(0, 255, 245, 0.1);
+    margin-bottom: 1rem;
+    transition: all 0.3s ease;
+}
+
+.booking-card:hover {
+    border-color: var(--accent-primary);
+    transform: translateY(-2px);
+}
+
+.booking-time-badge {
+    display: inline-block;
+    background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+    color: var(--bg-dark);
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    margin-bottom: 0.75rem;
+}
+
+.booking-details-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0.75rem;
+}
+
+/* ========================================
+   CALENDAR STYLES
+   ======================================== */
+.calendar-container {
+    background: var(--bg-card);
+    border-radius: 12px;
+    padding: 1.5rem;
+    border: 1px solid rgba(0, 255, 245, 0.1);
+}
+
+.calendar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.calendar-nav {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.calendar-nav button {
+    background: var(--bg-dark);
+    border: 1px solid var(--accent-primary);
+    color: var(--accent-primary);
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.calendar-nav button:hover {
+    background: var(--accent-primary);
+    color: var(--bg-dark);
+}
+
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+}
+
+.calendar-day-header {
+    text-align: center;
+    padding: 0.75rem;
+    color: var(--accent-primary);
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.calendar-day {
+    aspect-ratio: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-dark);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    padding: 0.5rem;
+    min-height: 50px; height: auto;
+}
+
+.calendar-day:hover {
+    background: rgba(0, 255, 245, 0.1);
+    border: 1px solid var(--accent-primary);
+}
+
+.calendar-day.today {
+    border: 2px solid var(--accent-primary);
+}
+
+.calendar-day.selected {
+    background: linear-gradient(135deg, rgba(0, 255, 245, 0.3), rgba(123, 44, 191, 0.3));
+}
+
+.calendar-day.has-bookings::after {
+    content: '';
+    width: 6px;
+    height: 6px;
+    background: var(--success);
+    border-radius: 50%;
+    margin-top: 4px;
+}
+
+/* ========================================
+   COURT CARDS
+   ======================================== */
+.court-card {
+    background: var(--bg-card);
+    padding: 1.5rem;
+    border-radius: 12px;
+    border: 1px solid rgba(0, 255, 245, 0.1);
+    margin-bottom: 1rem;
+}
+
+.court-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+}
+
+.court-type-badge {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.court-type-badge.padel {
+    background: rgba(0, 255, 245, 0.2);
+    color: var(--accent-primary);
+}
+
+.court-type-badge.tennis {
+    background: rgba(123, 44, 191, 0.2);
+    color: var(--accent-secondary);
+}
+
+.court-type-badge.calcetto {
+    background: rgba(0, 255, 136, 0.2);
+    color: var(--success);
+}
+
+/* ========================================
+   PLAYER CARDS
+   ======================================== */
+.player-card {
+    background: var(--bg-card);
+    padding: 1.25rem;
+    border-radius: 12px;
+    border: 1px solid rgba(0, 255, 245, 0.1);
+    margin-bottom: 1rem;
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    transition: all 0.3s ease;
+}
+
+.player-card:hover {
+    border-color: var(--accent-primary);
+    transform: translateY(-2px);
+}
+
+.player-avatar {
+    width: 50px;
+    height: 50px;
+    min-width: 50px;
+    background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    font-weight: bold;
+    color: var(--bg-dark);
+}
+
+.player-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.player-info h4 {
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+    font-size: 1rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.player-info p {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.player-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+@media (max-width: 600px) {
+    .player-card {
+        flex-direction: column;
+        align-items: flex-start;
+        text-align: left;
+    }
+
+    .player-avatar {
+        margin-bottom: 0.5rem;
+    }
+
+    .player-info {
+        width: 100%;
+    }
+
+    .player-actions {
+        width: 100%;
+        justify-content: flex-start;
+        margin-top: 0.75rem;
+    }
+}
+
+/* ========================================
+   RESPONSIVE - iPhone 16 and smaller phones
+   ======================================== */
+@media (max-width: 430px) {
+    .hamburger-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .sidebar {
+        position: fixed;
+        left: -280px;
+        transition: left 0.3s ease;
+        z-index: 1000;
+    }
+
+    .sidebar.open {
+        left: 0;
+    }
+
+    .sidebar-overlay.active {
+        display: block;
+    }
+
+    .main-content {
+        margin-left: 0;
+        padding: 1rem;
+        padding-top: 4rem;
+    }
+
+    .header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .header h2 {
+        font-size: 1.5rem;
+        padding-left: 3.5rem;
+    }
+
+    .stats-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+
+    .stat-card {
+        padding: 1rem;
+    }
+
+    .stat-icon {
+        font-size: 2rem;
+    }
+
+    .stat-info h3 {
+        font-size: 1.5rem;
+    }
+
+    .section {
+        padding: 1rem;
+    }
+
+    .section h3 {
+        font-size: 1.25rem;
+    }
+
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+
+    .modal-content {
+        width: 95%;
+        padding: 1rem;
+        margin: 1rem;
+        max-height: 85vh;
+    }
+
+    .calendar-grid {
+        gap: 2px;
+    }
+
+    .calendar-day {
+        min-height: 45px;
+        padding: 0.25rem;
+        font-size: 0.85rem;
+    }
+
+    .calendar-day-header {
+        font-size: 0.75rem;
+        padding: 0.5rem 0.25rem;
+    }
+
+    .btn {
+        padding: 0.875rem 1rem;
+        font-size: 0.95rem;
+        min-height: 48px;
+    }
+
+    .nav-item {
+        padding: 0.875rem 1.25rem;
+        min-height: 48px;
+    }
+
+    .timeline-container {
+    overflow: visible;
+        font-size: 0.7rem;
+    }
+
+    .booking-details-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .match-card-body {
+        grid-template-columns: 1fr;
+    }
+
+    .match-card-actions {
+        flex-wrap: wrap;
+    }
+}
+
+/* ========================================
+   RESPONSIVE - iPad Mini and iPad Air
+   ======================================== */
+@media (min-width: 431px) and (max-width: 834px) {
+    .hamburger-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .sidebar {
+        position: fixed;
+        left: -280px;
+        transition: left 0.3s ease;
+        z-index: 1000;
+    }
+
+    .sidebar.open {
+        left: 0;
+    }
+
+    .sidebar-overlay.active {
+        display: block;
+    }
+
+    .main-content {
+        margin-left: 0;
+        padding: 1.5rem;
+        padding-top: 4rem;
+    }
+
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .form-row {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .calendar-day {
+        min-height: 55px;
+    }
+
+    .booking-details-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* ========================================
+   RESPONSIVE - iPad Pro 11 and 12.9
+   ======================================== */
+@media (min-width: 835px) and (max-width: 1024px) {
+    .sidebar {
+        width: 250px;
+    }
+
+    .main-content {
+        margin-left: 250px;
+        padding: 1.5rem;
+    }
+
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .logo h1 {
+        font-size: 1.75rem;
+    }
+}
+
+/* ========================================
+   RESPONSIVE - iPad Pro Landscape and MacBook Air
+   ======================================== */
+@media (min-width: 1025px) and (max-width: 1440px) {
+    .stats-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    .form-row {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+/* ========================================
+   RESPONSIVE - MacBook Pro 14 and 16
+   ======================================== */
+@media (min-width: 1441px) {
+    .stats-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+
+    .main-content {
+        max-width: 1600px;
+        margin-left: 280px;
+    }
+
+    .section {
+        padding: 2.5rem;
+    }
+}
+
+/* ========================================
+   SAFE AREA FOR IPHONE NOTCH
+   ======================================== */
+@supports (padding-top: env(safe-area-inset-top)) {
+    .main-content {
+        padding-top: calc(2rem + env(safe-area-inset-top));
+    }
+
+    .sidebar {
+        padding-top: calc(2rem + env(safe-area-inset-top));
+    }
+
+    .hamburger-btn {
+        top: calc(1rem + env(safe-area-inset-top));
+    }
+}
+
+/* ========================================
+   TOUCH FRIENDLY IMPROVEMENTS
+   ======================================== */
+@media (hover: none) and (pointer: coarse) {
+    .btn, .nav-item, .calendar-day, .timeline-slot {
+        min-height: 44px;
+    }
+
+    .stat-card:hover, .match-card:hover, .booking-card:hover {
+        transform: none;
+    }
+
+    .form-group input, .form-group select {
+        font-size: 16px;
+        min-height: 48px;
+    }
+}
+
+/* ========================================
+   REDUCED MOTION
+   ======================================== */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* Prenotazioni corte: nascondi orario */
+.timeline-booking-bar.short-booking .booking-time {
+    display: none !important;
+}
+
+/* Colori prenotazioni per status */
+.timeline-booking-bar.status-confirmed {
+    background: linear-gradient(135deg, #22c55e, #16a34a) !important;
+}
+.timeline-booking-bar.status-pending {
+    background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+}
+.timeline-booking-bar.status-cancelled {
+    background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+    opacity: 0.6;
+}
+
+/* Prenotazioni corte: nascondi orario */
+.timeline-booking-bar.short-booking .booking-time {
+    display: none !important;
+}
+
+/* Calendario: giorni con prenotazioni */
+.calendar-day.has-booking {
+    background: rgba(239, 68, 68, 0.5) !important;
+}
+.calendar-day.has-booking:hover {
+    background: rgba(220, 38, 38, 0.6) !important;
+}
+
+/* Timeline Slots Styles - Semplice con linee orarie */
+.booking-timeline-container {
+    margin: 15px 0;
+}
+
+.timeline-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+    border-left: 2px dashed rgba(255,255,255,0.2);
+    padding-left: 10px;
+    position: relative;
+}
+
+/* Linea tratteggiata ogni ora (ogni 2 slot da 30min) */
+.timeline-grid::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    border-left: 1px dashed rgba(255,255,255,0.15);
+}
+
+.timeline-slot {
+    flex: 0 0 calc(50% - 5px);
+    margin: 2px;
+    padding: 10px 8px;
+    background: rgba(40, 40, 50, 0.6);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 4px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    position: relative;
+}
+
+/* Linea tratteggiata a destra di ogni slot pari (fine ora) */
+.timeline-slot:nth-child(2n) {
+    border-right: 2px dashed rgba(255,255,255,0.2);
+    margin-right: 10px;
+}
+
+.timeline-slot.available {
+    background: rgba(46, 204, 113, 0.1);
+    border-color: rgba(46, 204, 113, 0.3);
+    color: #2ecc71;
+}
+
+.timeline-slot.available:hover {
+    background: rgba(46, 204, 113, 0.25);
+    border-color: #2ecc71;
+}
+
+.timeline-slot.occupied {
+    background: rgba(231, 76, 60, 0.1);
+    border-color: rgba(231, 76, 60, 0.3);
+    color: #e74c3c;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.timeline-slot.selected {
+    background: rgba(52, 152, 219, 0.3);
+    border-color: #3498db;
+    color: white;
+    box-shadow: 0 0 8px rgba(52, 152, 219, 0.4);
+}
+
+.slot-time {
+    display: block;
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.slot-end {
+    display: block;
+    font-size: 10px;
+    opacity: 0.7;
+}
+
+.slot-price {
+    display: block;
+    font-size: 11px;
+    margin-top: 2px;
+    opacity: 0.8;
+}
+
+.loading-slots, .no-slots, .error-slots {
+    text-align: center;
+    padding: 20px;
+    color: #888;
+    font-style: italic;
+}
+
+.error-slots {
+    color: #e74c3c;
+}
