@@ -1,0 +1,36 @@
+[Unit]
+Description=Cloudflare Tunnel - RePlayo
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/cloudflared tunnel --config /etc/cloudflared/config.yml run
+
+# Restart automatico aggressivo
+Restart=always
+RestartSec=5s
+StartLimitInterval=0
+
+# Timeout
+TimeoutStartSec=60
+TimeoutStopSec=30
+
+# Restart anche in caso di successo dopo 12 ore (per evitare memory leaks)
+RuntimeMaxSec=43200
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cloudflared
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/etc/cloudflared /root/.cloudflared
+
+[Install]
+WantedBy=multi-user.target

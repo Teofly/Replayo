@@ -1,0 +1,13 @@
+{
+  "name": "replayo-admin-dashboard",
+  "version": "1.0.0",
+  "description": "RePlayo Admin Dashboard - Manage matches, videos, and users",
+  "main": "serve.js",
+  "scripts": {
+    "start": "node serve.js",
+    "dev": "node serve.js"
+  },
+  "keywords": ["replayo", "admin", "dashboard"],
+  "author": "Teofly",
+  "license": "ISC"
+}

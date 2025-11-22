@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RePlayo Admin Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="dashboard">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">
+                <img src="replayo-logo.png" alt="RePlayo" class="logo-img">
+                <h1>RePlayo</h1>
+                <p>Admin Dashboard</p>
+            </div>
+            <nav class="nav">
+                <a href="#" class="nav-item active" data-page="overview">📊 Overview</a>
+                <a href="#" class="nav-item" data-page="matches">🎾 Create Match</a>
+                <a href="#" class="nav-item" data-page="manage-matches">🔍 Manage Matches</a>
+                <a href="#" class="nav-item" data-page="videos">📹 Videos</a>
+                <a href="#" class="nav-item" data-page="users">👥 Users</a>
+                <a href="#" class="nav-item" data-page="storage">💾 Storage</a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="header">
+                <h2 id="page-title">Overview</h2>
+                <div class="header-actions">
+                    <span class="api-status" id="api-status">🔴 Checking...</span>
+                </div>
+            </header>
+
+            <div class="content">
+                <!-- Overview Page -->
+                <div id="page-overview" class="page active">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon">📹</div>
+                            <div class="stat-info">
+                                <h3 id="total-videos">-</h3>
+                                <p>Total Videos</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">💾</div>
+                            <div class="stat-info">
+                                <h3 id="total-storage">-</h3>
+                                <p>Storage Used</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">👁️</div>
+                            <div class="stat-info">
+                                <h3 id="total-views">-</h3>
+                                <p>Total Views</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">⬇️</div>
+                            <div class="stat-info">
+                                <h3 id="total-downloads">-</h3>
+                                <p>Total Downloads</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <h3>API Status</h3>
+                        <div class="info-box" id="api-info">
+                            <p>Checking API connection...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Matches Page -->
+                <div id="page-matches" class="page">
+                    <div class="section">
+                        <h3>Create New Match</h3>
+                        <form id="create-match-form" class="form">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Booking Code</label>
+                                    <input type="text" id="booking-code" placeholder="PADEL2024" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Sport Type</label>
+                                    <select id="sport-type" required>
+                                        <option value="padel">Padel</option>
+                                        <option value="tennis">Tennis</option>
+                                        <option value="soccer">Soccer</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Location</label>
+                                    <input type="text" id="location" placeholder="Centro Sportivo Milano" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Match Date</label>
+                                    <input type="datetime-local" id="match-date" required>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Players (comma separated)</label>
+                                <input type="text" id="players" placeholder="Mario Rossi, Luigi Verdi, Giovanni Bianchi, Paolo Neri" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Create Match</button>
+                        </form>
+                        <div id="match-result" class="result"></div>
+                    </div>
+                </div>
+
+                <!-- Manage Matches Page -->
+                <div id="page-manage-matches" class="page">
+                    <div class="section">
+                        <h3>Search Matches</h3>
+                        <form id="search-matches-form" class="form">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Booking Code</label>
+                                    <input type="text" id="search-booking-code" placeholder="Search by booking code">
+                                </div>
+                                <div class="form-group">
+                                    <label>Location</label>
+                                    <input type="text" id="search-location" placeholder="Search by location">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Sport Type</label>
+                                    <select id="search-sport-type">
+                                        <option value="">All Sports</option>
+                                        <option value="padel">Padel</option>
+                                        <option value="tennis">Tennis</option>
+                                        <option value="soccer">Soccer</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Date From</label>
+                                    <input type="date" id="search-date-from">
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Search</button>
+                        </form>
+                        <div id="search-results" style="margin-top: 2rem;"></div>
+                    </div>
+
+                    <!-- Edit Match Modal -->
+                    <div id="edit-modal" class="modal" style="display: none;">
+                        <div class="modal-content">
+                            <h3>Edit Match</h3>
+                            <form id="edit-match-form" class="form">
+                                <input type="hidden" id="edit-match-id">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Booking Code</label>
+                                        <input type="text" id="edit-booking-code" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Sport Type</label>
+                                        <select id="edit-sport-type" required>
+                                            <option value="padel">Padel</option>
+                                            <option value="tennis">Tennis</option>
+                                            <option value="soccer">Soccer</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Location</label>
+                                        <input type="text" id="edit-location" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Match Date</label>
+                                        <input type="datetime-local" id="edit-match-date" required>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Players (comma separated)</label>
+                                    <input type="text" id="edit-players" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Access Password</label>
+                                    <input type="text" id="edit-password" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>
+                                        <input type="checkbox" id="edit-is-active">
+                                        Active
+                                    </label>
+                                </div>
+                                <div style="display: flex; gap: 1rem;">
+                                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                                    <button type="button" class="btn btn-secondary" id="cancel-edit">Cancel</button>
+                                </div>
+                            </form>
+                            <div id="edit-result" class="result"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Videos Page -->
+                <div id="page-videos" class="page">
+                    <div class="section">
+                        <h3>Upload Video</h3>
+                        <form id="upload-video-form" class="form">
+                            <div class="form-group">
+                                <label>Match ID</label>
+                                <input type="text" id="video-match-id" placeholder="UUID del match" required>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Title</label>
+                                    <input type="text" id="video-title" placeholder="Primo Set" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Duration (seconds)</label>
+                                    <input type="number" id="video-duration" placeholder="3600" required>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Video File (max 2GB)</label>
+                                <input type="file" id="video-file" accept="video/*" required>
+                                <div class="file-info" id="file-info"></div>
+                            </div>
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="is-highlight">
+                                    Mark as Highlight
+                                </label>
+                            </div>
+                            <button type="submit" class="btn btn-primary" id="upload-btn">Upload Video</button>
+                            <div class="upload-progress" id="upload-progress" style="display: none;">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="progress-fill"></div>
+                                </div>
+                                <p id="progress-text">0%</p>
+                            </div>
+                        </form>
+                        <div id="upload-result" class="result"></div>
+                    </div>
+                </div>
+
+                <!-- Users Page -->
+                <div id="page-users" class="page">
+                    <div class="section">
+                        <h3>User Management</h3>
+                        <p class="info">User management via database queries. Use psql or database admin tools.</p>
+                        <div class="code-block">
+                            <code>
+psql -h 192.168.1.175 -U replayo_user -d replayo_db
+SELECT * FROM users;
+                            </code>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Storage Page -->
+                <div id="page-storage" class="page">
+                    <div class="section">
+                        <h3>Storage Configuration</h3>
+                        <div class="info-box" id="storage-info">
+                            <p>Loading storage info...</p>
+                        </div>
+
+                        <h3>Environment Variables</h3>
+                        <div class="code-block">
+                            <code>
+# Local Storage (NAS Synology)
+STORAGE_TYPE=local
+LOCAL_STORAGE_PATH=/volume1/RePlayo/videos
+
+# AWS S3 Storage
+STORAGE_TYPE=s3
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=your_key
+AWS_SECRET_ACCESS_KEY=your_secret
+S3_BUCKET=replayo-videos
+                            </code>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
