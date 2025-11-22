@@ -1445,7 +1445,7 @@ app.put('/api/bookings/:id', async (req, res) => {
 
         // Aggiorna sempre il match con i dati del booking
         await pool.query(
-          `UPDATE matches SET player_names = $1, player_ids = $2, match_date = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4`,
+          `UPDATE matches SET player_names = $1, player_ids = $2, match_date = $3 WHERE id = $4`,
           [bookingPlayerNames, bookingPlayerNames, matchDatetime, updatedBooking.match_id]
         );
         console.log(`✅ Match ${updatedBooking.match_id} aggiornato - Giocatori: ${bookingPlayerNames?.join(', ') || 'N/A'}`);
