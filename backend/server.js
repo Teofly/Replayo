@@ -1216,13 +1216,19 @@ async function createMatchFromBooking(booking, court, playerNames = null) {
     // Calcola datetime partita - gestisce sia Date che stringa
     let bookingDateStr;
     if (booking.booking_date instanceof Date) {
-      bookingDateStr = booking.booking_date.toISOString().split('T')[0];
+      // Usa getFullYear/Month/Date per evitare problemi timezone
+      const d = booking.booking_date;
+      bookingDateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     } else if (typeof booking.booking_date === 'string') {
       bookingDateStr = booking.booking_date.split('T')[0];
     } else {
-      bookingDateStr = new Date(booking.booking_date).toISOString().split('T')[0];
+      const d = new Date(booking.booking_date);
+      bookingDateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     }
-    const matchDatetime = new Date(`${bookingDateStr}T${booking.start_time}`);
+    // Usa start_time (formato HH:MM o HH:MM:SS)
+    const startTime = booking.start_time.substring(0, 5);
+    // Crea timestamp come stringa per PostgreSQL (evita problemi timezone)
+    const matchDatetime = `${bookingDateStr} ${startTime}:00`;
 
     const matchResult = await pool.query(
       `INSERT INTO matches (booking_code, access_password, sport_type, match_date,
