@@ -88,8 +88,8 @@ function navigateTo(page) {
         'bookings': 'Prenotazioni',
         'courts': 'Gestione Campi',
         'players': 'Anagrafica Giocatori',
-        'matches': 'Create Match',
-        'manage-matches': 'Manage Matches',
+        'partitaes': 'Create Match',
+        'manage-partitaes': 'Manage Matches',
         'videos': 'Videos',
         'users': 'Users',
         'storage': 'Storage'
@@ -186,8 +186,8 @@ async function loadCourts() {
         // Map API field names to frontend expected names
         courtsCache = rawCourts.map(c => ({
             ...c,
-            slot_duration_minutes: c.slot_duration_minutes || c.default_duration_minutes || 90,
-            price_per_player: c.price_per_player || (parseFloat(c.price_per_hour) / 4) || 15
+            default_duration_minutes: c.slot_duration_minutes || c.default_duration_minutes || 90,
+            price_per_hour: parseFloat(c.price_per_hour) || 15
         }));
         console.log('Mapped courts:', courtsCache);
         return courtsCache;
@@ -221,16 +221,16 @@ function renderCourtsList() {
                 </div>
             </div>
             <div class="match-card-body">
-                <div class="match-detail">
-                    <span class="match-detail-label">Durata Slot</span>
-                    <span class="match-detail-value">${court.slot_duration_minutes} min</span>
+                <div class="partita-detail">
+                    <span class="partita-detail-label">Durata Slot</span>
+                    <span class="partita-detail-value">${court.default_duration_minutes} min</span>
                 </div>
-                <div class="match-detail">
-                    <span class="match-detail-label">Prezzo/Giocatore</span>
-                    <span class="match-detail-value">${court.price_per_player} EUR</span>
+                <div class="partita-detail">
+                    <span class="partita-detail-label">Prezzo/Giocatore</span>
+                    <span class="partita-detail-value">${court.price_per_hour} EUR</span>
                 </div>
-                <div class="match-detail">
-                    <span class="match-detail-label">Stato</span>
+                <div class="partita-detail">
+                    <span class="partita-detail-label">Stato</span>
                     <span class="badge ${court.is_active ? 'badge-active' : 'badge-inactive'}">
                         ${court.is_active ? 'Attivo' : 'Disattivo'}
                     </span>
@@ -248,8 +248,9 @@ async function editCourt(courtId) {
     document.getElementById('court-id').value = court.id;
     document.getElementById('court-name').value = court.name;
     document.getElementById('court-sport-type').value = court.sport_type;
-    document.getElementById('court-duration').value = court.slot_duration_minutes;
-    document.getElementById('court-price').value = court.price_per_player;
+    document.getElementById('court-duration').value = court.default_duration_minutes;
+    document.getElementById("court-price").value = court.price_per_player || court.price_per_hour;
+    document.getElementById("court-num-players").value = court.num_players || 4;
     document.getElementById('court-description').value = court.description || '';
     document.getElementById('court-is-active').checked = court.is_active;
 
@@ -374,7 +375,7 @@ function renderCalendar() {
     // Days of month
     for (let day = 1; day <= lastDay.getDate(); day++) {
         const date = new Date(currentYear, currentMonth, day);
-        const dateStr = date.toISOString().split('T')[0];
+        const dateStr = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
         const isToday = date.getTime() === today.getTime();
         const isSelected = selectedDate === dateStr;
 
@@ -468,7 +469,7 @@ async function renderDailyTimeline(dateStr) {
 
         courtsCache.forEach(court => {
             const courtBookings = dayBookings.filter(b => b.court_id === court.id);
-            const defaultDuration = court.slot_duration_minutes || court.default_duration_minutes || 90;
+            const defaultDuration = court.default_duration_minutes || court.default_duration_minutes || 90;
 
             html += `<div class="timeline-row">`;
             html += `<div class="timeline-court-name">${court.name}</div>`;
@@ -504,7 +505,7 @@ async function renderDailyTimeline(dateStr) {
                 })();
 
                 html += `
-                    <div class="timeline-booking-bar"
+                    <div class="timeline-booking-bar status-${booking.status || "pending"} ${widthPercent < 8 ? "short-booking" : ""}"
                          style="left: ${leftPercent}%; width: ${widthPercent}%;"
                          title="${booking.customer_name} | ${bookingStart} - ${endTime}"
                          onclick="showBookingDetails('${booking.id}')">
@@ -549,7 +550,8 @@ function quickBook(courtId, date, time) {
     loadAvailableSlots(courtId, date).then(() => {
         document.getElementById('booking-time').value = time;
     });
-    document.getElementById('booking-modal').style.display = 'flex';
+    populateCourtSelect();
+        document.getElementById('booking-modal').style.display = 'flex';
 }
 
 // ==========================================
@@ -662,8 +664,6 @@ async function showBookingDetails(bookingId) {
 async function confirmBooking() {
     if (!currentBookingDetails) return;
 
-    if (!confirm('Confermare questa prenotazione?')) return;
-
     try {
         const response = await fetch(`${API_BASE_URL}/bookings/${currentBookingDetails.id}/confirm`, {
             method: 'PUT'
@@ -684,8 +684,6 @@ async function confirmBooking() {
 
 async function deleteBooking() {
     if (!currentBookingDetails) return;
-
-    if (!confirm(`Eliminare la prenotazione di ${currentBookingDetails.customer_name}?`)) return;
 
     try {
         const response = await fetch(`${API_BASE_URL}/bookings/${currentBookingDetails.id}`, {
@@ -750,7 +748,8 @@ function editBookingFromDetails() {
     // Mark form as editing existing booking
     document.getElementById('booking-form').dataset.editingId = booking.id;
 
-    document.getElementById('booking-modal').style.display = 'flex';
+    populateCourtSelect();
+        document.getElementById('booking-modal').style.display = 'flex';
 }
 
 async function loadAvailableSlots(courtId, date) {
@@ -941,6 +940,7 @@ function setupModals() {
         if (selectedDate) {
             document.getElementById('booking-date').value = selectedDate;
         }
+        populateCourtSelect();
         document.getElementById('booking-modal').style.display = 'flex';
     });
 
@@ -1049,7 +1049,7 @@ async function handleBookingSubmit(e) {
 
     // Calculate end_time based on court's slot duration
     const court = courtsCache.find(c => String(c.id) === String(courtId));
-    const slotDuration = court ? (court.slot_duration_minutes || court.default_duration_minutes || 90) : 90;
+    const slotDuration = court ? (court.default_duration_minutes || court.default_duration_minutes || 90) : 90;
 
     // Parse start time and add duration
     const [startHour, startMin] = time.split(':').map(Number);
@@ -1060,7 +1060,7 @@ async function handleBookingSubmit(e) {
     const endTime = `${String(endHour).padStart(2, '0')}:${String(endMin).padStart(2, '0')}`;
 
     const formData = {
-        court_id: parseInt(courtId),
+        court_id: courtId,
         booking_date: date,
         start_time: time,
         end_time: endTime,
@@ -1113,10 +1113,12 @@ async function handleCourtSubmit(e) {
     const formData = {
         name: document.getElementById('court-name').value,
         sport_type: document.getElementById('court-sport-type').value,
-        slot_duration_minutes: parseInt(document.getElementById('court-duration').value),
-        price_per_player: parseFloat(document.getElementById('court-price').value),
+        default_duration_minutes: parseInt(document.getElementById('court-duration').value),
+        price_per_player: parseFloat(document.getElementById("court-price").value),
+        num_players: parseInt(document.getElementById("court-num-players").value),
         description: document.getElementById('court-description').value,
-        is_active: document.getElementById('court-is-active').checked
+        is_active: document.getElementById("court-is-active").checked,
+        has_video_recording: true
     };
 
     try {
@@ -1181,19 +1183,19 @@ async function handlePlayerSubmit(e) {
 // ==========================================
 // MATCH VIDEO PLAYER
 // ==========================================
-async function showMatchVideos(matchId, matchTitle) {
+async function showMatchVideos(partitaId, partitaTitle) {
     const modal = document.getElementById('video-player-modal');
     const titleEl = document.getElementById('video-modal-title');
     const listContainer = document.getElementById('video-list-container');
     const playerContainer = document.getElementById('video-player-container');
 
-    titleEl.textContent = `Video: ${matchTitle}`;
+    titleEl.textContent = `Video: ${partitaTitle}`;
     listContainer.innerHTML = '<p>Caricamento video...</p>';
     playerContainer.innerHTML = '';
     modal.style.display = 'flex';
 
     try {
-        const response = await fetch(`${API_BASE_URL}/videos/match/${matchId}`);
+        const response = await fetch(`${API_BASE_URL}/videos/partita/${partitaId}`);
         const videos = await response.json();
 
         if (!videos || videos.length === 0) {
@@ -1251,8 +1253,8 @@ function setupForms() {
     // Upload Video Form
     document.getElementById('upload-video-form')?.addEventListener('submit', handleUploadVideo);
 
-    // Search Matches Form
-    document.getElementById('search-matches-form')?.addEventListener('submit', handleSearchMatches);
+    // Cerca Partite Form
+    document.getElementById('search-partitaes-form')?.addEventListener('submit', handleSearchMatches);
 
     // Edit Match Form
     document.getElementById('edit-match-form')?.addEventListener('submit', handleEditMatch);
@@ -1275,7 +1277,7 @@ function setupForms() {
 
 async function handleCreateMatch(e) {
     e.preventDefault();
-    const resultEl = document.getElementById('match-result');
+    const resultEl = document.getElementById('partita-result');
     const submitBtn = e.target.querySelector('button[type="submit"]');
 
     submitBtn.disabled = true;
@@ -1285,12 +1287,12 @@ async function handleCreateMatch(e) {
         bookingCode: document.getElementById('booking-code').value,
         sportType: document.getElementById('sport-type').value,
         location: document.getElementById('location').value,
-        matchDate: document.getElementById('match-date').value,
+        partitaDate: document.getElementById('partita-date').value,
         players: document.getElementById('players').value.split(',').map(p => p.trim())
     };
 
     try {
-        const response = await fetch(`${API_BASE_URL}/matches/create`, {
+        const response = await fetch(`${API_BASE_URL}/partitaes/create`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(formData)
@@ -1303,8 +1305,8 @@ async function handleCreateMatch(e) {
             resultEl.innerHTML = `
                 <h4>Match Created!</h4>
                 <p><strong>ID:</strong> ${data.match.id}</p>
-                <p><strong>Code:</strong> ${data.match.booking_code}</p>
-                <p><strong>Password:</strong> <code>${data.match.session_password}</code></p>
+                <p><strong>Code:</strong> ${data.partita.booking_code}</p>
+                <p><strong>Password:</strong> <code>${data.partita.session_password}</code></p>
             `;
             e.target.reset();
         } else {
@@ -1340,7 +1342,7 @@ async function handleUploadVideo(e) {
 
     const formData = new FormData();
     formData.append('video', file);
-    formData.append('matchId', document.getElementById('video-match-id').value);
+    formData.append('partitaId', document.getElementById('video-match.id').value);
     formData.append('title', document.getElementById('video-title').value);
     formData.append('durationSeconds', document.getElementById('video-duration').value);
     formData.append('isHighlight', document.getElementById('is-highlight').checked);
@@ -1380,7 +1382,7 @@ async function handleSearchMatches(e) {
     const submitBtn = e.target.querySelector('button[type="submit"]');
 
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Searching...';
+    submitBtn.textContent = 'Ricerca...';
 
     const params = new URLSearchParams();
     const bookingCode = document.getElementById('search-booking-code').value.trim();
@@ -1394,16 +1396,16 @@ async function handleSearchMatches(e) {
     if (dateFrom) params.append('dateFrom', dateFrom);
 
     try {
-        const response = await fetch(`${API_BASE_URL}/matches/search?${params.toString()}`);
+        const response = await fetch(`${API_BASE_URL}/partitaes/search?${params.toString()}`);
         const data = await response.json();
 
         if (response.ok && data.success) {
-            if (data.matches.length === 0) {
-                resultsEl.innerHTML = '<p style="color: var(--text-secondary)">No matches found</p>';
+            if (data.partitaes.length === 0) {
+                resultsEl.innerHTML = '<p style="color: var(--text-secondary)">Nessuna partita trovata</p>';
             } else {
                 resultsEl.innerHTML = `
-                    <h3>Found ${data.count} match${data.count > 1 ? 'es' : ''}</h3>
-                    ${data.matches.map(match => renderMatchCard(match)).join('')}
+                    <h3>Trovate ${data.count} partita${data.count > 1 ? 'es' : ''}</h3>
+                    ${data.partitaes.map(partita => renderMatchCard(partita)).join('')}
                 `;
             }
         } else {
@@ -1417,72 +1419,73 @@ async function handleSearchMatches(e) {
     }
 }
 
-function renderMatchCard(match) {
-    const matchDate = new Date(match.match_date).toLocaleString();
-    const isActive = match.is_active;
-    const videoCount = match.video_count || 0;
+function renderMatchCard(partita) {
+    const partitaDate = new Date(partita.match_date).toLocaleString();
+    const isActive = partita.is_active;
+    const videoCount = partita.video_count || 0;
 
     return `
         <div class="match-card">
             <div class="match-card-header">
                 <div>
-                    <h4 class="match-card-title">${match.booking_code}</h4>
+                    <h4 class="match-card-title">${partita.booking_code}</h4>
                     <span class="badge ${isActive ? 'badge-active' : 'badge-inactive'}">
                         ${isActive ? 'Active' : 'Inactive'}
                     </span>
                 </div>
                 <div class="match-card-actions">
-                    ${videoCount > 0 ? `<button class="btn btn-secondary btn-small" onclick="showMatchVideos('${match.id}', '${match.booking_code}')">▶️ Video (${videoCount})</button>` : ''}
+                    ${videoCount > 0 ? `<button class="btn btn-secondary btn-small" onclick="showMatchVideos('${match.id}', '${partita.booking_code}')">▶️ Video (${videoCount})</button>` : ''}
+                    <button class="btn btn-success btn-small" onclick="openUploadVideo('${match.id}', '${partita.booking_code}')">📤 Upload</button>
                     <button class="btn btn-primary btn-small" onclick="editMatch('${match.id}')">Edit</button>
-                    <button class="btn btn-danger btn-small" onclick="deleteMatch('${match.id}', '${match.booking_code}')">Delete</button>
+                    <button class="btn btn-danger btn-small" onclick="deleteMatch('${match.id}', '${partita.booking_code}')">Delete</button>
                 </div>
             </div>
             <div class="match-card-body">
-                <div class="match-detail">
-                    <span class="match-detail-label">Sport</span>
-                    <span class="match-detail-value">${match.sport_type}</span>
+                <div class="partita-detail">
+                    <span class="partita-detail-label">Sport</span>
+                    <span class="partita-detail-value">${partita.sport_type}</span>
                 </div>
-                <div class="match-detail">
-                    <span class="match-detail-label">Location</span>
-                    <span class="match-detail-value">${match.location}</span>
+                <div class="partita-detail">
+                    <span class="partita-detail-label">Location</span>
+                    <span class="partita-detail-value">${partita.location}</span>
                 </div>
-                <div class="match-detail">
-                    <span class="match-detail-label">Match Date</span>
-                    <span class="match-detail-value">${matchDate}</span>
+                <div class="partita-detail">
+                    <span class="partita-detail-label">Match Date</span>
+                    <span class="partita-detail-value">${partitaDate}</span>
                 </div>
-                <div class="match-detail">
-                    <span class="match-detail-label">Players</span>
-                    <span class="match-detail-value">${match.player_names.join(', ')}</span>
+                <div class="partita-detail">
+                    <span class="partita-detail-label">Players</span>
+                    <span class="partita-detail-value">${partita.player_names.join(', ')}</span>
                 </div>
-                <div class="match-detail">
-                    <span class="match-detail-label">Password</span>
-                    <span class="match-detail-value"><code>${match.access_password}</code></span>
+                <div class="partita-detail">
+                    <span class="partita-detail-label">Password</span>
+                    <span class="partita-detail-value"><code>${partita.access_password}</code></span>
                 </div>
             </div>
         </div>
     `;
 }
 
-async function editMatch(matchId) {
+async function editMatch(partitaId) {
     try {
-        const response = await fetch(`${API_BASE_URL}/matches/id/${matchId}`);
+        const response = await fetch(`${API_BASE_URL}/partitaes/id/${partitaId}`);
         const data = await response.json();
 
         if (response.ok && data.success) {
-            const match = data.match;
-            document.getElementById('edit-match-id').value = match.id;
-            document.getElementById('edit-booking-code').value = match.booking_code;
-            document.getElementById('edit-sport-type').value = match.sport_type;
-            document.getElementById('edit-location').value = match.location;
-            document.getElementById('edit-match-date').value = new Date(match.match_date).toISOString().slice(0, 16);
-            document.getElementById('edit-players').value = match.player_names.join(', ');
-            document.getElementById('edit-password').value = match.access_password;
-            document.getElementById('edit-is-active').checked = match.is_active;
+            const partita = data.partita;
+            document.getElementById('edit-match.id').value = match.id;
+            document.getElementById('edit-booking-code').value = partita.booking_code;
+            document.getElementById('edit-sport-type').value = partita.sport_type;
+            document.getElementById('edit-location').value = partita.location;
+            document.getElementById('edit-partita-date').value = new Date(partita.match_date).toISOString().slice(0, 16);
+            document.getElementById('edit-players').value = partita.player_names.join(', ');
+            document.getElementById('edit-password').value = partita.access_password;
+            document.getElementById('edit-is-active').checked = partita.is_active;
 
             document.getElementById('edit-modal').style.display = 'flex';
         }
     } catch (error) {
-        alert('Error loading match: ' + error.message);
+        alert('Error loading partita: ' + error.message);
     }
 }
 
@@ -1494,19 +1497,19 @@ async function handleEditMatch(e) {
     submitBtn.disabled = true;
     submitBtn.textContent = 'Saving...';
 
-    const matchId = document.getElementById('edit-match-id').value;
+    const partitaId = document.getElementById('edit-match.id').value;
     const formData = {
         bookingCode: document.getElementById('edit-booking-code').value,
         sportType: document.getElementById('edit-sport-type').value,
         location: document.getElementById('edit-location').value,
-        matchDate: document.getElementById('edit-match-date').value,
+        partitaDate: document.getElementById('edit-partita-date').value,
         players: document.getElementById('edit-players').value.split(',').map(p => p.trim()),
         accessPassword: document.getElementById('edit-password').value,
         isActive: document.getElementById('edit-is-active').checked
     };
 
     try {
-        const response = await fetch(`${API_BASE_URL}/matches/${matchId}`, {
+        const response = await fetch(`${API_BASE_URL}/partitaes/${partitaId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(formData)
@@ -1519,7 +1522,7 @@ async function handleEditMatch(e) {
             resultEl.innerHTML = '<p>Match updated!</p>';
             setTimeout(() => {
                 document.getElementById('edit-modal').style.display = 'none';
-                document.getElementById('search-matches-form').dispatchEvent(new Event('submit'));
+                document.getElementById('search-partitaes-form').dispatchEvent(new Event('submit'));
             }, 1000);
         } else {
             throw new Error(data.message || 'Update failed');
@@ -1533,15 +1536,15 @@ async function handleEditMatch(e) {
     }
 }
 
-async function deleteMatch(matchId, bookingCode) {
-    if (!confirm(`Delete match "${bookingCode}"? This will also delete all videos!`)) return;
+async function deleteMatch(partitaId, bookingCode) {
+    if (!confirm(`Delete partita "${bookingCode}"? This will also delete all videos!`)) return;
 
     try {
-        const response = await fetch(`${API_BASE_URL}/matches/${matchId}`, { method: 'DELETE' });
+        const response = await fetch(`${API_BASE_URL}/partitaes/${partitaId}`, { method: 'DELETE' });
         const data = await response.json();
 
         if (response.ok && data.success) {
-            document.getElementById('search-matches-form').dispatchEvent(new Event('submit'));
+            document.getElementById('search-partitaes-form').dispatchEvent(new Event('submit'));
         }
     } catch (error) {
         alert('Error: ' + error.message);
@@ -1577,3 +1580,119 @@ function formatBytes(bytes) {
 setInterval(() => {
     if (currentPage === 'overview') loadOverviewData();
 }, 30000);
+
+// === FUNZIONI VIDEO UPLOAD ===
+function openUploadVideo(partitaId, bookingCode) {
+    document.getElementById('upload-match.id').value = partitaId;
+    document.getElementById('upload-partita-info').textContent = 'Match: ' + bookingCode;
+    document.getElementById('upload-video-modal').style.display = 'flex';
+}
+
+function closeUploadModal() {
+    document.getElementById('upload-video-modal').style.display = 'none';
+    document.getElementById('upload-progress').style.display = 'none';
+    document.getElementById('progress-bar').style.width = '0%';
+    document.getElementById('progress-text').textContent = '0%';
+}
+
+// Upload video form handler
+document.getElementById('upload-video-form-modal')?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const partitaId = document.getElementById('upload-match.id').value;
+    const fileInput = document.getElementById('video-file-input');
+    const title = document.getElementById('video-title').value;
+    
+    if (!fileInput.files[0]) {
+        alert('Seleziona un file video');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('video', fileInput.files[0]);
+    formData.append('match.id', partitaId);
+    formData.append('title', title || fileInput.files[0].name);
+    formData.append('durationSeconds', 0);
+    
+    document.getElementById('upload-progress').style.display = 'block';
+    
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', API_BASE_URL + '/videos/upload');
+    
+    xhr.upload.onprogress = function(e) {
+        if (e.lengthComputable) {
+            const percent = Math.round((e.loaded / e.total) * 100);
+            document.getElementById('progress-bar').style.width = percent + '%';
+            document.getElementById('progress-text').textContent = percent + '%';
+        }
+    };
+    
+    xhr.onload = function() {
+        if (xhr.status === 200 || xhr.status === 201) {
+            // Video caricato - aggiorna lista
+            closeUploadModal();
+            document.getElementById('search-partitaes-form').dispatchEvent(new Event('submit'));
+        } else {
+            alert('Errore upload: ' + xhr.responseText);
+        }
+    };
+    
+    xhr.onerror = function() {
+        alert('Errore di connessione');
+    };
+    
+    xhr.send(formData);
+});
+
+// === DIRECT UPLOAD VIDEO ===
+document.getElementById('direct-upload-form')?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const title = document.getElementById('direct-video-title').value;
+    const partitaId = document.getElementById('direct-match.id').value;
+    const fileInput = document.getElementById('direct-video-file');
+    
+    if (!fileInput.files[0]) {
+        alert('Seleziona un file video');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('video', fileInput.files[0]);
+    formData.append('title', title);
+    if (partitaId) formData.append('match.id', partitaId);
+    formData.append('durationSeconds', 0);
+    
+    document.getElementById('direct-upload-progress').style.display = 'block';
+    document.getElementById('direct-upload-result').innerHTML = '';
+    
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', API_BASE_URL + '/videos/upload');
+    
+    xhr.upload.onprogress = function(e) {
+        if (e.lengthComputable) {
+            const percent = Math.round((e.loaded / e.total) * 100);
+            document.getElementById('direct-progress-bar').style.width = percent + '%';
+            document.getElementById('direct-progress-text').textContent = percent + '%';
+        }
+    };
+    
+    xhr.onload = function() {
+        if (xhr.status === 200 || xhr.status === 201) {
+            document.getElementById('direct-upload-result').innerHTML = '<p style="color: var(--success);">✅ Video caricato con successo!</p>';
+            document.getElementById('direct-upload-form').reset();
+            setTimeout(() => {
+                document.getElementById('direct-upload-progress').style.display = 'none';
+                document.getElementById('direct-progress-bar').style.width = '0%';
+            }, 2000);
+        } else {
+            document.getElementById('direct-upload-result').innerHTML = '<p style="color: var(--error);">❌ Errore: ' + xhr.responseText + '</p>';
+        }
+    };
+    
+    xhr.onerror = function() {
+        document.getElementById('direct-upload-result').innerHTML = '<p style="color: var(--error);">❌ Errore di connessione</p>';
+    };
+    
+    xhr.send(formData);
+});

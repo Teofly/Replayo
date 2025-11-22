@@ -26,9 +26,7 @@
                 <a href="#" class="nav-item" data-page="bookings">📅 Prenotazioni</a>
                 <a href="#" class="nav-item" data-page="courts">🏟️ Campi</a>
                 <a href="#" class="nav-item" data-page="players">👤 Anagrafica</a>
-                <a href="#" class="nav-item" data-page="matches">🎾 Create Match</a>
-                <a href="#" class="nav-item" data-page="manage-matches">🔍 Manage Matches</a>
-                <a href="#" class="nav-item" data-page="videos">📹 Videos</a>
+                <a href="#" class="nav-item" data-page="matches">📹 Videos</a>
             </nav>
         </aside>
 
@@ -92,6 +90,7 @@
                                 <div class="calendar-nav">
                                     <button id="prev-month">&lt; Mese Prec</button>
                                     <button id="next-month">Mese Succ &gt;</button>
+                                    <button id="today-btn">Oggi</button>
                                 </div>
                                 <h4 id="calendar-month-year">Novembre 2025</h4>
                                 <button class="btn btn-primary" id="new-booking-btn">+ Nuova Prenotazione</button>
@@ -133,12 +132,11 @@
 
                 <!-- Matches Page -->
                 <div id="page-matches" class="page">
-                    <div class="section">
                         <h3>Create New Match</h3>
                         <form id="create-match-form" class="form">
                             <div class="form-row">
                                 <div class="form-group">
-                                    <label>Booking Code</label>
+                                    <label>Codice Prenotazione</label>
                                     <input type="text" id="booking-code" placeholder="PADEL2024" required>
                                 </div>
                                 <div class="form-group">
@@ -167,17 +165,15 @@
                             <button type="submit" class="btn btn-primary">Create Match</button>
                         </form>
                         <div id="match-result" class="result"></div>
-                    </div>
-                </div>
 
-                <!-- Manage Matches Page -->
-                <div id="page-manage-matches" class="page">
+                
+                
                     <div class="section">
-                        <h3>Search Matches</h3>
-                        <form id="search-matches-form" class="form">
+                    <div id="search-matches-section" class="section">
+                        <h3>Cerca Partite</h3>
                             <div class="form-row">
                                 <div class="form-group">
-                                    <label>Booking Code</label>
+                                    <label>Codice Prenotazione</label>
                                     <input type="text" id="search-booking-code" placeholder="Search by booking code">
                                 </div>
                                 <div class="form-group">
@@ -189,14 +185,14 @@
                                 <div class="form-group">
                                     <label>Sport Type</label>
                                     <select id="search-sport-type">
-                                        <option value="">All Sports</option>
+                                        <option value="">Tutti gli Sport</option>
                                         <option value="padel">Padel</option>
                                         <option value="tennis">Tennis</option>
                                         <option value="soccer">Soccer</option>
                                     </select>
                                 </div>
                                 <div class="form-group">
-                                    <label>Date From</label>
+                                    <label>Data Da</label>
                                     <input type="date" id="search-date-from">
                                 </div>
                             </div>
@@ -213,7 +209,7 @@
                                 <input type="hidden" id="edit-match-id">
                                 <div class="form-row">
                                     <div class="form-group">
-                                        <label>Booking Code</label>
+                                        <label>Codice Prenotazione</label>
                                         <input type="text" id="edit-booking-code" required>
                                     </div>
                                     <div class="form-group">
@@ -257,51 +253,38 @@
                             <div id="edit-result" class="result"></div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Videos Page -->
-                <div id="page-videos" class="page">
-                    <div class="section">
-                        <h3>Upload Video</h3>
-                        <form id="upload-video-form" class="form">
-                            <div class="form-group">
-                                <label>Match ID</label>
-                                <input type="text" id="video-match-id" placeholder="UUID del match" required>
-                            </div>
-                            <div class="form-row">
+                    <!-- Upload Video Modal -->
+                    <div id="upload-video-modal" class="modal" style="display: none;">
+                        <div class="modal-content">
+                            <h3>Upload Video</h3>
+                            <p id="upload-match-info" style="color: var(--primary); margin-bottom: 1rem;"></p>
+                            <form id="upload-video-form-modal" class="form">
+                                <input type="hidden" id="upload-match-id">
                                 <div class="form-group">
-                                    <label>Title</label>
-                                    <input type="text" id="video-title" placeholder="Primo Set" required>
+                                    <label>Video File</label>
+                                    <input type="file" id="video-file-input" accept="video/*" required>
                                 </div>
                                 <div class="form-group">
-                                    <label>Duration (seconds)</label>
-                                    <input type="number" id="video-duration" placeholder="3600" required>
+                                    <label>Video Title</label>
+                                    <input type="text" id="video-title" placeholder="Es: Highlight partita">
                                 </div>
-                            </div>
-                            <div class="form-group">
-                                <label>Video File (max 2GB)</label>
-                                <input type="file" id="video-file" accept="video/*" required>
-                                <div class="file-info" id="file-info"></div>
-                            </div>
-                            <div class="form-group">
-                                <label>
-                                    <input type="checkbox" id="is-highlight">
-                                    Mark as Highlight
-                                </label>
-                            </div>
-                            <button type="submit" class="btn btn-primary" id="upload-btn">Upload Video</button>
-                            <div class="upload-progress" id="upload-progress" style="display: none;">
-                                <div class="progress-bar">
-                                    <div class="progress-fill" id="progress-fill"></div>
+                                <div id="upload-progress" style="display: none; margin: 1rem 0;">
+                                    <div style="background: var(--border); border-radius: 10px; overflow: hidden;">
+                                        <div id="progress-bar" style="background: var(--success); height: 20px; width: 0%; transition: width 0.3s;"></div>
+                                    </div>
+                                    <p id="progress-text" style="text-align: center; margin-top: 0.5rem;">0%</p>
                                 </div>
-                                <p id="progress-text">0%</p>
-                            </div>
-                        </form>
-                        <div id="upload-result" class="result"></div>
+                                <div style="display: flex; gap: 1rem;">
+                                    <button type="submit" class="btn btn-success">Upload</button>
+                                    <button type="button" class="btn btn-secondary" onclick="closeUploadModal()">Cancel</button>
+                                </div>
+                            </form>
+                            <div id="upload-result" class="result"></div>
+                        </div>
                     </div>
                 </div>
 
-            </div>
         </main>
     </div>
 
@@ -322,7 +305,12 @@
                 </div>
                 <div class="form-group">
                     <label>Orario Disponibile</label>
-                    <select id="booking-time" required></select>
+                    <div id="booking-timeline-container" class="booking-timeline-container">
+                        <div class="booking-timeline-header" id="booking-timeline-header"></div>
+                        <div class="booking-timeline-slots" id="booking-timeline-slots"></div>
+                    </div>
+                    <input type="hidden" id="booking-time">
+                    <small id="selected-slot-info" style="color: var(--accent-primary); margin-top: 4px; display: block;"></small>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
@@ -387,6 +375,10 @@
                     <div class="form-group">
                         <label>Durata Slot (minuti)</label>
                         <input type="number" id="court-duration" value="90" min="30" max="180" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Numero Giocatori</label>
+                        <input type="number" id="court-num-players" value="4" min="1" max="10" required>
                     </div>
                     <div class="form-group">
                         <label>Prezzo per Giocatore</label>
