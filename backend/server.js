@@ -1423,7 +1423,60 @@ app.put('/api/bookings/:id', async (req, res) => {
       return res.status(404).json({ error: 'Prenotazione non trovata' });
     }
 
-    res.json({ success: true, booking: result.rows[0] });
+    const updatedBooking = result.rows[0];
+
+    // Se la prenotazione ha un match associato, aggiorna anche il match
+    if (updatedBooking.match_id) {
+      try {
+        // Calcola nuovo match_date se cambiati data o orario
+        let matchDatetime = null;
+        if (booking_date || start_time) {
+          const bDate = booking_date || updatedBooking.booking_date;
+          const sTime = start_time || updatedBooking.start_time;
+          let bookingDateStr;
+          if (bDate instanceof Date) {
+            bookingDateStr = `${bDate.getFullYear()}-${String(bDate.getMonth()+1).padStart(2,'0')}-${String(bDate.getDate()).padStart(2,'0')}`;
+          } else {
+            bookingDateStr = bDate.toString().split('T')[0];
+          }
+          const startTimeStr = sTime.substring(0, 5);
+          matchDatetime = `${bookingDateStr} ${startTimeStr}:00`;
+        }
+
+        // Aggiorna match con nuovi dati
+        const matchUpdateFields = [];
+        const matchUpdateValues = [];
+        let paramIdx = 1;
+
+        if (playerNames && playerNames.length > 0) {
+          matchUpdateFields.push(`player_names = $${paramIdx}`);
+          matchUpdateValues.push(playerNames);
+          paramIdx++;
+          matchUpdateFields.push(`player_ids = $${paramIdx}`);
+          matchUpdateValues.push(playerNames);
+          paramIdx++;
+        }
+
+        if (matchDatetime) {
+          matchUpdateFields.push(`match_date = $${paramIdx}`);
+          matchUpdateValues.push(matchDatetime);
+          paramIdx++;
+        }
+
+        if (matchUpdateFields.length > 0) {
+          matchUpdateValues.push(updatedBooking.match_id);
+          await pool.query(
+            `UPDATE matches SET ${matchUpdateFields.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = $${paramIdx}`,
+            matchUpdateValues
+          );
+          console.log(`✅ Match ${updatedBooking.match_id} aggiornato con booking`);
+        }
+      } catch (matchError) {
+        console.error('Error updating associated match:', matchError);
+      }
+    }
+
+    res.json({ success: true, booking: updatedBooking });
   } catch (error) {
     console.error('Error updating booking:', error);
     res.status(500).json({ error: 'Errore nell aggiornamento' });
