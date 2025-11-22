@@ -856,19 +856,18 @@ body {
 }
 
 .calendar-day {
-    aspect-ratio: auto;
+    height: 52px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: flex-start;
+    justify-content: center;
     background: var(--bg-dark);
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.2s;
-    padding: 0.5rem 0.5rem 1rem 0.5rem;
-    min-height: 55px;
-    height: auto;
+    padding: 0.5rem;
     position: relative;
+    overflow: visible;
 }
 
 .calendar-day:hover {
@@ -885,28 +884,29 @@ body {
 }
 
 /* Coverage bar inside calendar days */
-.coverage-bar-container {
+.day-number {
+    font-size: 1rem;
+    font-weight: 500;
+    z-index: 2;
+}
+
+.day-coverage-bar {
     position: absolute;
-    bottom: 4px;
-    left: 4px;
-    right: 4px;
-    height: 6px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 3px;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: transparent;
+    border-radius: 8px;
     overflow: hidden;
+    z-index: 1;
 }
 
-.coverage-bar {
+.day-coverage-fill {
     height: 100%;
-    background: linear-gradient(90deg, var(--success), var(--accent-primary));
-    border-radius: 3px;
-    transition: width 0.3s ease;
+    background: rgba(0, 200, 100, 0.4);
+    border-radius: 8px;
     min-width: 2px;
-}
-
-/* Calendar day needs relative positioning for the bar */
-.calendar-day {
-    position: relative;
 }
 
 /* Remove old dot indicator when has coverage bar */

@@ -397,13 +397,12 @@ function renderCalendar() {
         html += `
             <div class="calendar-day ${isToday ? 'today' : ''} ${isSelected ? 'selected' : ''}"
                  onclick="selectDate('${dateStr}')" data-date="${dateStr}">
-                ${day}
+                <span class="day-number">${day}</span>
             </div>
         `;
     }
 
     grid.innerHTML = html;
-    loadMonthBookings();
 
     // Seleziona automaticamente oggi se siamo nel mese corrente
     const now = new Date();
@@ -413,6 +412,68 @@ function renderCalendar() {
             selectDate(todayStr);
         }
     }
+
+    // Load coverage bars after render
+    loadCalendarCoverage();
+}
+
+function loadCalendarCoverage() {
+    const startDate = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
+    // Get last day of month correctly (day 0 of next month = last day of current month)
+    const lastDay = new Date(currentYear, currentMonth + 1, 0).getDate();
+    const endDate = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    // Remove existing coverage bars first (to allow refresh when filter changes)
+    document.querySelectorAll('.day-coverage-bar').forEach(bar => bar.remove());
+    document.querySelectorAll('.calendar-day.has-bookings').forEach(day => day.classList.remove('has-bookings'));
+
+    fetch(`${API_BASE_URL}/bookings?from_date=${startDate}&to_date=${endDate}`)
+        .then(r => r.json())
+        .then(data => {
+            // Handle different response formats
+            let bookings = [];
+            if (Array.isArray(data)) {
+                bookings = data;
+            } else if (data && Array.isArray(data.bookings)) {
+                bookings = data.bookings;
+            } else if (data && data.success && Array.isArray(data.bookings)) {
+                bookings = data.bookings;
+            }
+
+            // Filter courts by sport if filter is active
+            let filteredCourts = courtsCache.filter(c => c.is_active);
+            if (currentSportFilter) {
+                filteredCourts = filteredCourts.filter(c => c.sport_type === currentSportFilter);
+            }
+            const totalMinutes = filteredCourts.length * 14 * 60;
+
+            // Filter bookings by sport filter (directly via sport_type)
+            let filteredBookings = bookings;
+            if (currentSportFilter) {
+                filteredBookings = bookings.filter(b => b.sport_type === currentSportFilter);
+            }
+            // Calculate coverage per date
+            const coverage = {};
+            filteredBookings.forEach(b => {
+                const d = b.booking_date.split('T')[0];
+                coverage[d] = (coverage[d] || 0) + (b.duration_minutes || 90);
+            });
+
+            // Add bars to calendar
+            Object.keys(coverage).forEach(dateStr => {
+                const dayEl = document.querySelector(`.calendar-day[data-date="${dateStr}"]`);
+                if (dayEl) {
+                    const pct = totalMinutes > 0 ? Math.min(100, Math.round((coverage[dateStr] / totalMinutes) * 100)) : 0;
+                    const bar = document.createElement('div');
+                    bar.className = 'day-coverage-bar';
+                    bar.innerHTML = `<div class="day-coverage-fill" style="width:${pct}%"></div>`;
+                    bar.title = `${pct}% prenotato`;
+                    dayEl.appendChild(bar);
+                    dayEl.classList.add('has-bookings');
+                }
+            });
+        })
+        .catch(e => console.error('Coverage load error:', e));
 }
 
 async function loadMonthBookings() {
@@ -455,15 +516,37 @@ async function loadMonthBookings() {
                     ? Math.min(100, Math.round((bookedMinutes / totalAvailableMinutes) * 100))
                     : 0;
 
-                // Add coverage bar
-                let barContainer = dayEl.querySelector('.coverage-bar-container');
-                if (!barContainer) {
-                    barContainer = document.createElement('div');
-                    barContainer.className = 'coverage-bar-container';
-                    dayEl.appendChild(barContainer);
-                }
-                barContainer.innerHTML = `<div class="coverage-bar" style="width: ${coveragePercent}%"></div>`;
-                barContainer.title = `Copertura: ${coveragePercent}% (${Math.round(bookedMinutes/60)}h su ${activeCourts.length * hoursPerDay}h)`;
+                // Remove old bar if exists
+                const oldBar = dayEl.querySelector('.day-coverage');
+                if (oldBar) oldBar.remove();
+
+                // Create coverage bar container at bottom of day cell
+                const barWrapper = document.createElement('div');
+                barWrapper.className = 'day-coverage';
+                barWrapper.style.cssText = `
+                    position: absolute;
+                    bottom: 4px;
+                    left: 4px;
+                    right: 4px;
+                    height: 6px;
+                    background: rgba(255,255,255,0.1);
+                    border-radius: 3px;
+                    overflow: hidden;
+                `;
+                barWrapper.title = `${coveragePercent}% prenotato`;
+
+                // Create the actual bar
+                const bar = document.createElement('div');
+                bar.style.cssText = `
+                    width: ${coveragePercent}%;
+                    height: 100%;
+                    background: linear-gradient(90deg, #00ff88, #00bcd4);
+                    border-radius: 3px;
+                    transition: width 0.3s;
+                `;
+
+                barWrapper.appendChild(bar);
+                dayEl.appendChild(barWrapper);
             }
         });
     } catch (error) {
@@ -1941,4 +2024,7 @@ function filterBySport(sport) {
             row.style.display = 'none';
         }
     });
+
+    // Update calendar coverage bars for filtered sport
+    loadCalendarCoverage();
 }
