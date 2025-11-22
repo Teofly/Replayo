@@ -577,7 +577,7 @@ body {
 .timeline-row {
     display: grid;
     grid-template-columns: 120px 1fr;
-    gap: 1px;
+    gap: 0;
     background: var(--bg-dark);
     min-height: 50px; height: auto;
     
@@ -597,13 +597,14 @@ body {
     position: relative;
     display: grid;
     grid-template-columns: repeat(28, minmax(0, 1fr));
-    gap: 1px;
+    gap: 0;
     background: var(--bg-card);
 }
 
 .timeline-slot {
+    border: 1px solid rgba(255,255,255,0.15);
+    
     background: rgba(0, 255, 136, 0.05);
-    border-right: 1px dashed rgba(0, 255, 136, 0.2);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -627,7 +628,6 @@ body {
 }
 
 .timeline-slot:nth-child(2n) {
-    border-right: 1px solid rgba(0, 255, 245, 0.2);
 }
 
 .timeline-booking-bar {
@@ -637,6 +637,7 @@ body {
     background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
     border-radius: 8px;
     display: flex;
+    border: 2px solid rgba(255,255,255,0.35);
     flex-direction: column;
     justify-content: center;
     padding: 0.5rem 0.75rem;
@@ -1213,6 +1214,8 @@ body {
    ======================================== */
 @media (hover: none) and (pointer: coarse) {
     .btn, .nav-item, .calendar-day, .timeline-slot {
+    border: 1px solid rgba(255,255,255,0.15);
+    
         min-height: 44px;
     }
 
@@ -1272,68 +1275,65 @@ body {
     margin: 15px 0;
 }
 
+}
+
+.loading-slots, .no-slots, .error-slots {
+    text-align: center;
+    padding: 20px;
+    color: #888;
+    font-style: italic;
+}
+
+.error-slots {
+    color: #e74c3c;
+}
+
+/* Timeline orizzontale per modal prenotazione */
 .timeline-grid {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    overflow-x: auto;
     gap: 0;
-    border-left: 2px dashed rgba(255,255,255,0.2);
-    padding-left: 10px;
-    position: relative;
+    padding: 10px 0;
+    scrollbar-width: thin;
 }
 
-/* Linea tratteggiata ogni ora (ogni 2 slot da 30min) */
-.timeline-grid::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 50%;
-    border-left: 1px dashed rgba(255,255,255,0.15);
-}
-
-.timeline-slot {
-    flex: 0 0 calc(50% - 5px);
-    margin: 2px;
-    padding: 10px 8px;
-    background: rgba(40, 40, 50, 0.6);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 4px;
+.timeline-grid .timeline-slot {
+    flex: 0 0 auto;
+    min-width: 70px;
+    padding: 8px 10px;
     text-align: center;
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 6px;
+    margin-right: 4px;
     cursor: pointer;
     transition: all 0.15s ease;
-    position: relative;
 }
 
-/* Linea tratteggiata a destra di ogni slot pari (fine ora) */
-.timeline-slot:nth-child(2n) {
-    border-right: 2px dashed rgba(255,255,255,0.2);
-    margin-right: 10px;
-}
-
-.timeline-slot.available {
-    background: rgba(46, 204, 113, 0.1);
-    border-color: rgba(46, 204, 113, 0.3);
+.timeline-grid .timeline-slot.available {
+    background: rgba(46, 204, 113, 0.15);
+    border-color: rgba(46, 204, 113, 0.4);
     color: #2ecc71;
 }
 
-.timeline-slot.available:hover {
-    background: rgba(46, 204, 113, 0.25);
+.timeline-grid .timeline-slot.available:hover {
+    background: rgba(46, 204, 113, 0.3);
     border-color: #2ecc71;
 }
 
-.timeline-slot.occupied {
-    background: rgba(231, 76, 60, 0.1);
+.timeline-grid .timeline-slot.occupied {
+    background: rgba(231, 76, 60, 0.15);
     border-color: rgba(231, 76, 60, 0.3);
     color: #e74c3c;
     cursor: not-allowed;
     opacity: 0.6;
 }
 
-.timeline-slot.selected {
-    background: rgba(52, 152, 219, 0.3);
+.timeline-grid .timeline-slot.selected {
+    background: rgba(52, 152, 219, 0.4);
     border-color: #3498db;
     color: white;
-    box-shadow: 0 0 8px rgba(52, 152, 219, 0.4);
+    box-shadow: 0 0 8px rgba(52, 152, 219, 0.5);
 }
 
 .slot-time {
@@ -1350,18 +1350,36 @@ body {
 
 .slot-price {
     display: block;
-    font-size: 11px;
+    font-size: 10px;
     margin-top: 2px;
     opacity: 0.8;
 }
 
 .loading-slots, .no-slots, .error-slots {
     text-align: center;
-    padding: 20px;
-    color: #888;
-    font-style: italic;
+    padding: 15px;
+    color: var(--text-secondary);
 }
 
-.error-slots {
-    color: #e74c3c;
+/* Fix sovrapposizione nomi in timeline */
+.timeline-booking-bar {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.timeline-booking-bar .booking-name,
+.timeline-booking-bar .booking-time {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+/* Per prenotazioni molto corte, mostra solo nome */
+.timeline-booking-bar.short-booking {
+    padding: 0.25rem 0.5rem;
+}
+
+.timeline-booking-bar.short-booking .booking-name {
+    font-size: 0.75rem;
 }

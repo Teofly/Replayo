@@ -1148,7 +1148,7 @@ delete document.getElementById('booking-form').dataset.editingId;        documen
             clearSelectedPlayers();
             renderCalendar();
             if (selectedDate) renderDailyTimeline(selectedDate);
-            alert(editingId ? 'Prenotazione aggiornata!' : 'Prenotazione creata!');
+            
         } else {
             throw new Error(data.message || data.error || 'Errore salvataggio prenotazione');
         }

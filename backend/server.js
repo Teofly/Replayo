@@ -1135,11 +1135,11 @@ async function createMatchFromBooking(booking, court) {
     const matchDatetime = new Date(`${booking.booking_date}T${booking.start_time}`);
     
     const matchResult = await pool.query(
-      `INSERT INTO matches (booking_code, password, sport_type, match_date, 
-         court_name, players, duration_minutes, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, true) RETURNING *`,
+      `INSERT INTO matches (booking_code, access_password, sport_type, match_date, 
+         location, player_ids, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, true) RETURNING *`,
       [bookingCode, password, court.sport_type, matchDatetime, 
-       court.name, [booking.customer_name], booking.duration_minutes]
+       court.name, [booking.customer_name]]
     );
     
     const match = matchResult.rows[0];
@@ -1229,7 +1229,7 @@ app.put('/api/bookings/:id/confirm', async (req, res) => {
     
     // Ricarica booking
     const updatedResult = await pool.query(
-      `SELECT b.*, c.name as court_name, c.sport_type, m.booking_code as match_booking_code, m.password as match_password
+      `SELECT b.*, c.name as court_name, c.sport_type, m.booking_code as match_booking_code, m.access_password as match_password
        FROM bookings b 
        JOIN courts c ON b.court_id = c.id 
        LEFT JOIN matches m ON b.match_id = m.id
@@ -1262,6 +1262,21 @@ app.put('/api/bookings/:id/cancel', async (req, res) => {
   } catch (error) {
     console.error('Error cancelling booking:', error);
     res.status(500).json({ error: 'Errore nella cancellazione' });
+  }
+});
+
+// DELETE /api/bookings/:id - Elimina prenotazione
+app.delete("/api/bookings/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query("DELETE FROM bookings WHERE id = $1 RETURNING *", [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Prenotazione non trovata" });
+    }
+    res.json({ success: true, message: "Prenotazione eliminata" });
+  } catch (error) {
+    console.error("Error deleting booking:", error);
+    res.status(500).json({ error: "Errore eliminazione prenotazione" });
   }
 });
 
