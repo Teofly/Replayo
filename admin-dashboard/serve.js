@@ -1,8 +1,9 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const url = require('url');
 
-const PORT = 8080;
+const PORT = 8083;
 
 const mimeTypes = {
     '.html': 'text/html',
@@ -16,7 +17,8 @@ const mimeTypes = {
 };
 
 const server = http.createServer((req, res) => {
-    let filePath = req.url === '/' ? '/index.html' : req.url;
+    const parsedUrl = url.parse(req.url, true);
+    let filePath = parsedUrl.pathname === '/' ? '/index.html' : parsedUrl.pathname;
     filePath = path.join(__dirname, filePath);
 
     const ext = path.extname(filePath);
@@ -32,13 +34,15 @@ const server = http.createServer((req, res) => {
                 res.end('500 Internal Server Error');
             }
         } else {
-            res.writeHead(200, { 'Content-Type': contentType });
+            res.writeHead(200, { 
+                'Content-Type': contentType,
+                'Cache-Control': 'no-cache, no-store, must-revalidate'
+            });
             res.end(content);
         }
     });
 });
 
 server.listen(PORT, () => {
-    console.log(`🎨 Admin Dashboard running at http://localhost:${PORT}`);
-    console.log(`Make sure the backend API is running on port 3000`);
+    console.log('Admin Dashboard running at http://localhost:' + PORT);
 });

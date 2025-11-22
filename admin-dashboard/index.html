@@ -100,7 +100,15 @@
                     </div>
 
                     <div class="section">
-                        <h3>Prenotazioni del Giorno: <span id="selected-date-display">-</span></h3>
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">
+                            <h3 style="margin: 0;">Prenotazioni del Giorno: <span id="selected-date-display">-</span></h3>
+                            <div class="sport-filters">
+                                <button class="sport-filter-btn active" data-sport="all" onclick="filterBySport(null)">Tutti</button>
+                                <button class="sport-filter-btn" data-sport="padel" onclick="filterBySport('padel')">Padel</button>
+                                <button class="sport-filter-btn" data-sport="tennis" onclick="filterBySport('tennis')">Tennis</button>
+                                <button class="sport-filter-btn" data-sport="calcetto" onclick="filterBySport('calcetto')">Calcetto</button>
+                            </div>
+                        </div>
                         <div id="daily-bookings-timeline" class="timeline-container"></div>
                     </div>
                 </div>

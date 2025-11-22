@@ -13,6 +13,7 @@ let courtsCache = [];
 let playersCache = [];
 let bookingsCache = [];
 let selectedBookingPlayers = []; // Players selected for current booking
+let currentSportFilter = null; // Sport filter for timeline
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', () => {
@@ -494,7 +495,7 @@ async function renderDailyTimeline(dateStr) {
             const courtBookings = dayBookings.filter(b => b.court_id === court.id);
             const defaultDuration = court.default_duration_minutes || court.default_duration_minutes || 90;
 
-            html += `<div class="timeline-row">`;
+            html += `<div class="timeline-row" data-sport="${court.sport_type || ''}">`;
             html += `<div class="timeline-court-name">${court.name}</div>`;
             html += `<div class="timeline-slots-container">`;
 
@@ -528,7 +529,7 @@ async function renderDailyTimeline(dateStr) {
                 })();
 
                 html += `
-                    <div class="timeline-booking-bar status-${booking.status || "pending"} ${widthPercent < 8 ? "short-booking" : ""}"
+                    <div class="timeline-booking-bar status-${booking.status || "pending"} sport-${court.sport_type || 'other'} ${widthPercent < 8 ? "short-booking" : ""}"
                          style="left: ${leftPercent}%; width: ${widthPercent}%;"
                          title="${booking.customer_name} | ${bookingStart} - ${endTime}"
                          onclick="showBookingDetails('${booking.id}')">
@@ -561,6 +562,11 @@ async function renderDailyTimeline(dateStr) {
 
         container.innerHTML = html;
 
+        // Re-apply sport filter if active
+        if (typeof currentSportFilter !== 'undefined' && currentSportFilter !== null) {
+            filterBySport(currentSportFilter);
+        }
+
     } catch (error) {
         console.error('Error rendering timeline:', error);
         container.innerHTML = '<p style="color: var(--danger)">Errore caricamento timeline</p>';
@@ -568,19 +574,29 @@ async function renderDailyTimeline(dateStr) {
 }
 
 function quickBook(courtId, date, time) {
+    // Reset form e prepara per nuova prenotazione
+    document.getElementById('booking-form').reset();
+    delete document.getElementById('booking-form').dataset.editingId;
+    document.getElementById('booking-submit-btn').textContent = 'Crea Prenotazione';
+    clearSelectedPlayers();
+
+    // Popola select campi e imposta il campo cliccato
+    populateCourtSelect();
     document.getElementById('booking-court').value = courtId;
     document.getElementById('booking-date').value = date;
+
+    // Carica slot e seleziona quello cliccato
     loadAvailableSlots(courtId, date).then(() => {
-        // Seleziona visivamente lo slot nella timeline
         const slotEl = document.querySelector(`.timeline-slot[data-time="${time}"]`);
         if (slotEl) {
             document.querySelectorAll(".timeline-slot.selected").forEach(s => s.classList.remove("selected"));
             slotEl.classList.add("selected");
         }
         document.getElementById('booking-time').value = time;
+        document.getElementById('selected-slot-info').textContent = `Orario selezionato: ${time}`;
     });
-    populateCourtSelect();
-        document.getElementById('booking-modal').style.display = 'flex';
+
+    document.getElementById('booking-modal').style.display = 'flex';
 }
 
 // ==========================================
@@ -701,7 +717,6 @@ async function confirmBooking() {
         if (response.ok) {
             document.getElementById('booking-details-modal').style.display = 'none';
             if (selectedDate) renderDailyTimeline(selectedDate);
-            alert('Prenotazione confermata!');
         } else {
             const data = await response.json();
             throw new Error(data.error || 'Errore conferma');
@@ -723,7 +738,6 @@ async function deleteBooking() {
             document.getElementById('booking-details-modal').style.display = 'none';
             if (selectedDate) renderDailyTimeline(selectedDate);
             renderCalendar();
-            alert('Prenotazione eliminata!');
         } else {
             const data = await response.json();
             throw new Error(data.error || 'Errore eliminazione');
@@ -981,16 +995,22 @@ function setupModals() {
         renderCalendar();
     });
 
-    // New booking button
+    // New booking button - propone data odierna, campo da selezionare
     document.getElementById('new-booking-btn')?.addEventListener('click', () => {
         document.getElementById('booking-form').reset();
-delete document.getElementById('booking-form').dataset.editingId;        document.getElementById('booking-submit-btn').textContent = 'Crea Prenotazione';
-        populateCourtSelect();
+        delete document.getElementById('booking-form').dataset.editingId;
+        document.getElementById('booking-submit-btn').textContent = 'Crea Prenotazione';
         clearSelectedPlayers();
-        if (selectedDate) {
-            document.getElementById('booking-date').value = selectedDate;
-        }
         populateCourtSelect();
+
+        // Imposta data odierna
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('booking-date').value = today;
+
+        // Pulisci timeline slot (utente deve scegliere campo prima)
+        document.getElementById('booking-timeline-slots').innerHTML = '<p style="color: var(--text-secondary); padding: 1rem;">Seleziona un campo per vedere gli orari disponibili</p>';
+        document.getElementById('selected-slot-info').textContent = '';
+
         document.getElementById('booking-modal').style.display = 'flex';
     });
 
@@ -1517,12 +1537,24 @@ function renderMatchCard(partita) {
                     <span class="match-detail-value">${partita.player_names.join(', ')}</span>
                 </div>
                 <div class="match-detail">
+                    <span class="match-detail-label">Match ID</span>
+                    <span class="match-detail-value"><code>${partita.id}</code> <button class="btn-copy" onclick="copyToClipboard('${partita.id}', this)" title="Copia ID">📋</button></span>
+                </div>
+                <div class="match-detail">
                     <span class="match-detail-label">Password</span>
-                    <span class="match-detail-value"><code>${partita.access_password}</code></span>
+                    <span class="match-detail-value"><code>${partita.access_password}</code> <button class="btn-copy" onclick="copyToClipboard('${partita.access_password}', this)" title="Copia Password">📋</button></span>
                 </div>
             </div>
         </div>
     `;
+}
+
+function copyToClipboard(text, btn) {
+    navigator.clipboard.writeText(text).then(() => {
+        const original = btn.textContent;
+        btn.textContent = '✓';
+        setTimeout(() => btn.textContent = original, 1000);
+    });
 }
 
 async function editMatch(partitaId) {
@@ -1645,7 +1677,7 @@ setInterval(() => {
 // === FUNZIONI VIDEO UPLOAD ===
 function openUploadVideo(partitaId, bookingCode) {
     document.getElementById('upload-match-id').value = partitaId;
-    document.getElementById('upload-partita-info').textContent = 'Match: ' + bookingCode;
+    document.getElementById('upload-match-info').textContent = 'Match: ' + bookingCode;
     document.getElementById('upload-video-modal').style.display = 'flex';
 }
 
@@ -1671,7 +1703,7 @@ document.getElementById('upload-video-form-modal')?.addEventListener('submit', a
     
     const formData = new FormData();
     formData.append('video', fileInput.files[0]);
-    formData.append('match_id', partitaId);
+    formData.append('matchId', partitaId);
     formData.append('title', title || fileInput.files[0].name);
     formData.append('durationSeconds', 0);
     
@@ -1754,6 +1786,29 @@ document.getElementById('direct-upload-form')?.addEventListener('submit', async 
     xhr.onerror = function() {
         document.getElementById('direct-upload-result').innerHTML = '<p style="color: var(--error);">❌ Errore di connessione</p>';
     };
-    
+
     xhr.send(formData);
 });
+
+// Sport filter for timeline
+function filterBySport(sport) {
+    currentSportFilter = sport;
+
+    // Update active button
+    document.querySelectorAll('.sport-filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if ((sport === null && btn.dataset.sport === 'all') || btn.dataset.sport === sport) {
+            btn.classList.add('active');
+        }
+    });
+
+    // Filter timeline rows
+    document.querySelectorAll('.timeline-row').forEach(row => {
+        const rowSport = row.dataset.sport;
+        if (sport === null || rowSport === sport) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
