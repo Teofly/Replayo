@@ -868,6 +868,8 @@ function selectBookingSlot(el, time) {
 // ==========================================
 // PLAYER SELECTION FOR BOOKINGS
 // ==========================================
+let selectedSuggestionIndex = -1;
+
 function setupPlayerSearch() {
     const searchInput = document.getElementById('booking-player-search');
     const suggestionsDiv = document.getElementById('player-suggestions');
@@ -877,6 +879,8 @@ function setupPlayerSearch() {
     // Search as you type
     searchInput.addEventListener('input', async (e) => {
         const query = e.target.value.trim();
+        selectedSuggestionIndex = -1;
+
         if (query.length < 2) {
             suggestionsDiv.style.display = 'none';
             return;
@@ -890,11 +894,9 @@ function setupPlayerSearch() {
             if (players.length === 0) {
                 suggestionsDiv.innerHTML = '<div style="padding: 0.75rem; color: var(--text-secondary);">Nessun risultato - premi Invio per aggiungere</div>';
             } else {
-                suggestionsDiv.innerHTML = players.map(p => `
-                    <div class="player-suggestion" data-id="${p.id}" data-name="${p.first_name} ${p.last_name}"
-                         style="padding: 0.75rem; cursor: pointer; border-bottom: 1px solid rgba(0,255,245,0.1);"
-                         onmouseover="this.style.background='rgba(0,255,245,0.1)'"
-                         onmouseout="this.style.background='transparent'">
+                suggestionsDiv.innerHTML = players.map((p, idx) => `
+                    <div class="player-suggestion" data-id="${p.id}" data-name="${p.first_name} ${p.last_name}" data-index="${idx}"
+                         style="padding: 0.75rem; cursor: pointer; border-bottom: 1px solid rgba(0,255,245,0.1);">
                         <strong>${p.first_name} ${p.last_name}</strong>
                         <small style="color: var(--text-secondary); margin-left: 0.5rem;">${p.email || p.phone || ''}</small>
                     </div>
@@ -906,6 +908,11 @@ function setupPlayerSearch() {
                         addPlayerToBooking(el.dataset.id, el.dataset.name, true);
                         searchInput.value = '';
                         suggestionsDiv.style.display = 'none';
+                        searchInput.focus();
+                    });
+                    el.addEventListener('mouseover', () => {
+                        selectedSuggestionIndex = parseInt(el.dataset.index);
+                        updateSuggestionHighlight(suggestionsDiv);
                     });
                 });
             }
@@ -915,16 +922,43 @@ function setupPlayerSearch() {
         }
     });
 
-    // Press Enter to add free-form name
+    // Keyboard navigation
     searchInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
+        const suggestions = suggestionsDiv.querySelectorAll('.player-suggestion');
+
+        if (e.key === 'ArrowDown') {
             e.preventDefault();
-            const name = searchInput.value.trim();
-            if (name) {
-                addPlayerToBooking(null, name, false);
+            if (suggestions.length > 0) {
+                selectedSuggestionIndex = Math.min(selectedSuggestionIndex + 1, suggestions.length - 1);
+                updateSuggestionHighlight(suggestionsDiv);
+            }
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (suggestions.length > 0) {
+                selectedSuggestionIndex = Math.max(selectedSuggestionIndex - 1, 0);
+                updateSuggestionHighlight(suggestionsDiv);
+            }
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (selectedSuggestionIndex >= 0 && suggestions[selectedSuggestionIndex]) {
+                const el = suggestions[selectedSuggestionIndex];
+                addPlayerToBooking(el.dataset.id, el.dataset.name, true);
                 searchInput.value = '';
                 suggestionsDiv.style.display = 'none';
+                selectedSuggestionIndex = -1;
+                searchInput.focus();
+            } else {
+                const name = searchInput.value.trim();
+                if (name) {
+                    addPlayerToBooking(null, name, false);
+                    searchInput.value = '';
+                    suggestionsDiv.style.display = 'none';
+                    searchInput.focus();
+                }
             }
+        } else if (e.key === 'Escape') {
+            suggestionsDiv.style.display = 'none';
+            selectedSuggestionIndex = -1;
         }
     });
 
@@ -932,6 +966,18 @@ function setupPlayerSearch() {
     document.addEventListener('click', (e) => {
         if (!searchInput.contains(e.target) && !suggestionsDiv.contains(e.target)) {
             suggestionsDiv.style.display = 'none';
+            selectedSuggestionIndex = -1;
+        }
+    });
+}
+
+function updateSuggestionHighlight(container) {
+    const suggestions = container.querySelectorAll('.player-suggestion');
+    suggestions.forEach((el, idx) => {
+        if (idx === selectedSuggestionIndex) {
+            el.style.background = 'rgba(0,255,245,0.2)';
+        } else {
+            el.style.background = 'transparent';
         }
     });
 }
