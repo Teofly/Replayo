@@ -45,5 +45,7 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>RePlayo richiede l'accesso alla libreria foto per salvare i video delle partite nel rullino fotografico.</string>
 </dict>
 </plist>

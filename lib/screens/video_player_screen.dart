@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -6,6 +7,9 @@ import 'package:video_player/video_player.dart' as vp;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:dio/dio.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:gal/gal.dart';
 import '../config/app_theme.dart';
 import '../models/video.dart';
 import '../services/database_service.dart';
@@ -108,17 +112,38 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     });
 
     try {
-      // Build download URL
-      final downloadUrl = '${ApiService.baseUrl}/videos/${widget.video.id}/download';
+      // Check if platform supports gallery save (iOS/Android)
+      if (!kIsWeb && (Platform.isIOS || Platform.isAndroid)) {
+        // Download video file and save to gallery
+        final downloadUrl = '${ApiService.baseUrl}/videos/${widget.video.id}/download';
 
-      // Open download URL in browser
-      final uri = Uri.parse(downloadUrl);
+        // Get temporary directory
+        final tempDir = await getTemporaryDirectory();
+        final fileName = 'replayo_${widget.video.id}_${DateTime.now().millisecondsSinceEpoch}.mp4';
+        final filePath = '${tempDir.path}/$fileName';
 
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(
-          uri,
-          mode: LaunchMode.externalApplication,
+        // Download file with progress
+        final dio = Dio();
+        await dio.download(
+          downloadUrl,
+          filePath,
+          onReceiveProgress: (received, total) {
+            if (total != -1) {
+              setState(() {
+                _downloadProgress = received / total;
+              });
+            }
+          },
         );
+
+        // Save to gallery using Gal
+        await Gal.putVideo(filePath, album: 'RePlayo');
+
+        // Delete temporary file
+        final tempFile = File(filePath);
+        if (await tempFile.exists()) {
+          await tempFile.delete();
+        }
 
         // Increment download count
         await _dbService.incrementVideoDownloadCount(widget.video.id);
@@ -127,7 +152,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                'Download avviato! Controlla la cartella Download o File.',
+                'Video salvato nel Rullino Foto!',
                 style: GoogleFonts.roboto(color: Colors.white),
               ),
               backgroundColor: AppTheme.neonGreen,
@@ -140,7 +165,33 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           );
         }
       } else {
-        throw Exception('Impossibile aprire il link di download');
+        // Fallback for web: open in browser
+        final downloadUrl = '${ApiService.baseUrl}/videos/${widget.video.id}/download';
+        final uri = Uri.parse(downloadUrl);
+
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+          await _dbService.incrementVideoDownloadCount(widget.video.id);
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Download avviato! Controlla la cartella Download.',
+                  style: GoogleFonts.roboto(color: Colors.white),
+                ),
+                backgroundColor: AppTheme.neonGreen,
+                behavior: SnackBarBehavior.floating,
+                duration: const Duration(seconds: 4),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            );
+          }
+        } else {
+          throw Exception('Impossibile aprire il link di download');
+        }
       }
     } catch (e) {
       if (mounted) {
