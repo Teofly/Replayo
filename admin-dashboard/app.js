@@ -763,6 +763,14 @@ function editBookingFromDetails() {
     // Close details modal
     document.getElementById('booking-details-modal').style.display = 'none';
 
+    // Clear and reload players
+    clearSelectedPlayers();
+    if (booking.player_names && Array.isArray(booking.player_names)) {
+        booking.player_names.forEach(name => {
+            addPlayerToBooking(null, name, false);
+        });
+    }
+
     // First populate court select
     populateCourtSelect();
 
