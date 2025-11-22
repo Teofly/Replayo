@@ -1428,49 +1428,27 @@ app.put('/api/bookings/:id', async (req, res) => {
     // Se la prenotazione ha un match associato, aggiorna anche il match
     if (updatedBooking.match_id) {
       try {
-        // Calcola nuovo match_date se cambiati data o orario
-        let matchDatetime = null;
-        if (booking_date || start_time) {
-          const bDate = booking_date || updatedBooking.booking_date;
-          const sTime = start_time || updatedBooking.start_time;
-          let bookingDateStr;
-          if (bDate instanceof Date) {
-            bookingDateStr = `${bDate.getFullYear()}-${String(bDate.getMonth()+1).padStart(2,'0')}-${String(bDate.getDate()).padStart(2,'0')}`;
-          } else {
-            bookingDateStr = bDate.toString().split('T')[0];
-          }
-          const startTimeStr = sTime.substring(0, 5);
-          matchDatetime = `${bookingDateStr} ${startTimeStr}:00`;
-        }
+        // Usa player_names dal booking aggiornato
+        const bookingPlayerNames = updatedBooking.player_names;
 
-        // Aggiorna match con nuovi dati
-        const matchUpdateFields = [];
-        const matchUpdateValues = [];
-        let paramIdx = 1;
-
-        if (playerNames && playerNames.length > 0) {
-          matchUpdateFields.push(`player_names = $${paramIdx}`);
-          matchUpdateValues.push(playerNames);
-          paramIdx++;
-          matchUpdateFields.push(`player_ids = $${paramIdx}`);
-          matchUpdateValues.push(playerNames);
-          paramIdx++;
+        // Calcola match_date dal booking aggiornato
+        const bDate = updatedBooking.booking_date;
+        const sTime = updatedBooking.start_time;
+        let bookingDateStr;
+        if (bDate instanceof Date) {
+          bookingDateStr = `${bDate.getFullYear()}-${String(bDate.getMonth()+1).padStart(2,'0')}-${String(bDate.getDate()).padStart(2,'0')}`;
+        } else {
+          bookingDateStr = bDate.toString().split('T')[0];
         }
+        const startTimeStr = sTime.toString().substring(0, 5);
+        const matchDatetime = `${bookingDateStr} ${startTimeStr}:00`;
 
-        if (matchDatetime) {
-          matchUpdateFields.push(`match_date = $${paramIdx}`);
-          matchUpdateValues.push(matchDatetime);
-          paramIdx++;
-        }
-
-        if (matchUpdateFields.length > 0) {
-          matchUpdateValues.push(updatedBooking.match_id);
-          await pool.query(
-            `UPDATE matches SET ${matchUpdateFields.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = $${paramIdx}`,
-            matchUpdateValues
-          );
-          console.log(`✅ Match ${updatedBooking.match_id} aggiornato con booking`);
-        }
+        // Aggiorna sempre il match con i dati del booking
+        await pool.query(
+          `UPDATE matches SET player_names = $1, player_ids = $2, match_date = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4`,
+          [bookingPlayerNames, bookingPlayerNames, matchDatetime, updatedBooking.match_id]
+        );
+        console.log(`✅ Match ${updatedBooking.match_id} aggiornato - Giocatori: ${bookingPlayerNames?.join(', ') || 'N/A'}`);
       } catch (matchError) {
         console.error('Error updating associated match:', matchError);
       }
