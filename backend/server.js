@@ -1174,21 +1174,18 @@ app.post('/api/bookings', async (req, res) => {
     // Determina stato iniziale
     const status = auto_confirm ? 'confirmed' : 'pending';
     
-    // Crea prenotazione
+    // Crea prenotazione con player_names
     const bookingResult = await pool.query(
       `INSERT INTO bookings (court_id, booking_date, start_time, end_time, duration_minutes,
-         customer_name, customer_email, customer_phone, num_players, 
-         total_price, price_per_player, status, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+         customer_name, customer_email, customer_phone, num_players,
+         total_price, price_per_player, status, notes, player_names)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
       [court_id, booking_date, start_time, end_time, duration_minutes,
        customer_name, customer_email, customer_phone, num_players || 4,
-       total_price, price_per_player, status, notes]
+       total_price, price_per_player, status, notes, playerNames]
     );
-    
+
     const booking = bookingResult.rows[0];
-    
-    // Salva player_names nel booking per uso successivo
-    booking.player_names = playerNames;
 
     // Se auto_confirm, crea subito il match
     if (auto_confirm && court.has_video_recording) {
@@ -1304,8 +1301,10 @@ app.put('/api/bookings/:id/confirm', async (req, res) => {
       [payment_status || 'paid', payment_method, id]
     );
 
-    // Usa player_names passati o customer_name come fallback
-    const players = player_names && player_names.length > 0 ? player_names : [booking.customer_name];
+    // Priorità: 1) player_names dal DB, 2) player_names dalla request, 3) customer_name come fallback
+    const players = (booking.player_names && booking.player_names.length > 0)
+      ? booking.player_names
+      : (player_names && player_names.length > 0 ? player_names : [booking.customer_name]);
 
     // Crea match se il campo ha registrazione video
     let match = null;
