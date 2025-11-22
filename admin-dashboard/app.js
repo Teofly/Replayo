@@ -1013,7 +1013,7 @@ function renderSelectedPlayers() {
                      background: ${p.isRegistered ? 'rgba(0,255,245,0.2)' : 'rgba(255,170,0,0.2)'};
                      color: ${p.isRegistered ? 'var(--accent-primary)' : 'var(--warning)'};
                      padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.85rem;">
-            ${p.isRegistered ? '✓' : '?'} ${p.name}
+            ${p.name}
             <button type="button" onclick="removePlayerFromBooking('${p.name}')"
                     style="background: none; border: none; color: inherit; cursor: pointer; font-size: 1rem;">×</button>
         </span>
