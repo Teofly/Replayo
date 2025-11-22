@@ -22,7 +22,7 @@
                 <p>Admin Dashboard</p>
             </div>
             <nav class="nav">
-                <a href="#" class="nav-item active" data-page="overview">📊 Overview</a>
+                <a href="#" class="nav-item active" data-page="overview">📊 Stato</a>
                 <a href="#" class="nav-item" data-page="bookings">📅 Prenotazioni</a>
                 <a href="#" class="nav-item" data-page="courts">🏟️ Campi</a>
                 <a href="#" class="nav-item" data-page="players">👤 Anagrafica</a>
@@ -33,14 +33,14 @@
         <!-- Main Content -->
         <main class="main-content">
             <header class="header">
-                <h2 id="page-title">Overview</h2>
+                <h2 id="page-title">Stato</h2>
                 <div class="header-actions">
                     <span class="api-status" id="api-status">🔴 Checking...</span>
                 </div>
             </header>
 
             <div class="content">
-                <!-- Overview Page -->
+                <!-- Stato Page -->
                 <div id="page-overview" class="page active">
                     <div class="stats-grid">
                         <div class="stat-card">
@@ -74,8 +74,8 @@
                     </div>
 
                     <div class="section">
-                        <h3>API Status</h3>
-                        <div class="info-box" id="api-info">
+                        <h3>Environment Status</h3>
+                        <div class="info-box" id="env-status">
                             <p>Checking API connection...</p>
                         </div>
                     </div>
@@ -165,12 +165,11 @@
                             <button type="submit" class="btn btn-primary">Create Match</button>
                         </form>
                         <div id="match-result" class="result"></div>
-
                 
                 
-                    <div class="section">
-                    <div id="search-matches-section" class="section">
+                    <div id="search-matches-section" class="section" style="margin-top: 2rem;">
                         <h3>Cerca Partite</h3>
+                        <form id="search-matches-form" class="form">
                             <div class="form-row">
                                 <div class="form-group">
                                     <label>Codice Prenotazione</label>
@@ -329,7 +328,7 @@
                     </div>
                     <div class="form-group">
                         <label>Numero Giocatori</label>
-                        <input type="number" id="booking-num-players" min="1" max="10" value="4">
+                        <input type="number" id="booking-num-players" min="1" max="14" value="4">
                     </div>
                 </div>
                 <div class="form-group">
@@ -344,7 +343,7 @@
                     <input type="text" id="booking-notes" placeholder="Note aggiuntive...">
                 </div>
                 <div style="display: flex; gap: 1rem;">
-                    <button type="submit" class="btn btn-primary">Crea Prenotazione</button>
+                    <button type="submit" class="btn btn-primary" id="booking-submit-btn">Crea Prenotazione</button>
                     <button type="button" class="btn btn-secondary" id="cancel-booking">Annulla</button>
                 </div>
             </form>
@@ -378,7 +377,7 @@
                     </div>
                     <div class="form-group">
                         <label>Numero Giocatori</label>
-                        <input type="number" id="court-num-players" value="4" min="1" max="10" required>
+                        <input type="number" id="court-num-players" value="4" min="1" max="14" required>
                     </div>
                     <div class="form-group">
                         <label>Prezzo per Giocatore</label>

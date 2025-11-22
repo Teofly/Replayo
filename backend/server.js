@@ -140,6 +140,43 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Environment Status Endpoint
+app.get("/api/status/environment", async (req, res) => {
+  const fs = require("fs");
+  try {
+    const status = {
+      server: { status: "online", uptime: process.uptime() },
+      api: { status: "ok", url: "http://" + req.headers.host },
+      database: { status: "unknown" },
+      nas: { status: "unknown", path: "/mnt/nas/replayo/videos" },
+      dependencies: { nodejs: process.version, pm2: "running" },
+      timestamp: new Date().toISOString()
+    };
+    try {
+      await pool.query("SELECT 1");
+      status.database.status = "connected";
+      status.database.name = process.env.DB_NAME || "replayo_db";
+    } catch (dbError) {
+      status.database.status = "error";
+    }
+    const nasPath = "/mnt/nas/replayo/videos";
+    try {
+      if (fs.existsSync(nasPath)) {
+        status.nas.status = "mounted";
+        status.nas.accessible = true;
+      } else {
+        status.nas.status = "not_mounted";
+        status.nas.accessible = false;
+      }
+    } catch (nasError) {
+      status.nas.status = "error";
+    }
+    res.json({ success: true, status: status });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // ==================== MATCH ROUTES ====================
 // IMPORTANT: Specific routes MUST come before dynamic parameter routes
 // Otherwise Express will match :bookingCode instead of /search or /id/:matchId
@@ -186,43 +223,15 @@ app.get('/api/matches/search', async (req, res) => {
     query += ' GROUP BY m.id ORDER BY m.match_date DESC';
 
     const result = await pool.query(query, params);
+
     // Get player names for each match
-const matches = await Promise.all(result.rows.map(async (match) => {
-      let playerNames = [];
-      
-      // Se ha players (array di stringhe dai match creati da booking)
-      if (match.players && Array.isArray(match.players)) {
-        playerNames = match.players;
-      }
-      // Se ha player_ids (array)
-      else if (match.player_ids && Array.isArray(match.player_ids) && match.player_ids.length > 0) {
-        // Controlla se sono UUID o nomi
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        const firstItem = match.player_ids[0];
-        
-        if (uuidRegex.test(firstItem)) {
-          // Sono UUID, cerca i nomi nella tabella users
-          for (const playerId of match.player_ids) {
-            try {
-              const userResult = await pool.query('SELECT name FROM users WHERE id = $1', [playerId]);
-              if (userResult.rows.length > 0) {
-                playerNames.push(userResult.rows[0].name);
-              }
-            } catch (e) {
-              // Se fallisce, usa l'ID stesso
-              playerNames.push(playerId);
-            }
-          }
-        } else {
-          // Non sono UUID, sono già nomi
-          playerNames = match.player_ids;
-        }
-      }
-      
+    const matches = await Promise.all(result.rows.map(async (match) => {
+      // Use player_ids directly as names (they might already be names, not UUIDs)
+      const playerNames = match.player_ids || [];
       return {
         ...match,
         player_names: playerNames,
-        video_count: parseInt(match.video_count) || 0
+        video_count: parseInt(match.video_count)
       };
     }));
 
@@ -258,30 +267,8 @@ app.get('/api/matches/id/:matchId', async (req, res) => {
     }
 
     const match = result.rows[0];
-
-    // Get player names
-    let playerNames = [];
-    if (match.player_ids && Array.isArray(match.player_ids) && match.player_ids.length > 0) {
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      const firstItem = match.player_ids[0];
-      
-      if (uuidRegex.test(firstItem)) {
-        // Sono UUID, cerca i nomi nella tabella users
-        for (const playerId of match.player_ids) {
-          try {
-            const userResult = await pool.query('SELECT name FROM users WHERE id = $1', [playerId]);
-            if (userResult.rows.length > 0) {
-              playerNames.push(userResult.rows[0].name);
-            }
-          } catch (e) {
-            playerNames.push(playerId);
-          }
-        }
-      } else {
-        // Non sono UUID, sono già nomi
-        playerNames = match.player_ids;
-      }
-    }
+    // Use player_ids directly as names
+    const playerNames = match.player_ids || [];
 
     res.json({
       success: true,
@@ -299,6 +286,8 @@ app.get('/api/matches/id/:matchId', async (req, res) => {
     });
   }
 });
+
+// Get match by booking code - MUST BE AFTER specific routes
 app.get('/api/matches/:bookingCode', async (req, res) => {
   try {
     const { bookingCode } = req.params;
@@ -439,7 +428,7 @@ app.post('/api/matches/verify', async (req, res) => {
     let playerFound = false;
     for (const playerId of match.player_ids) {
       const userResult = await pool.query(
-        'SELECT name FROM users WHERE id = $1$1',
+        'SELECT name FROM users WHERE id = $1',
         [playerId]
       );
       if (userResult.rows.length > 0 &&
@@ -501,9 +490,7 @@ app.post('/api/videos/upload', upload.single('video'), async (req, res) => {
       return res.status(400).json({ error: 'Nessun file caricato' });
     }
 
-    const matchId = req.body.matchId || req.body.match_id;
-    const title = req.body.title || req.file.originalname;
-    const { durationSeconds, isHighlight } = req.body;
+    const { matchId, title, durationSeconds, isHighlight } = req.body;
 
     // Validate match exists
     const matchResult = await pool.query(
@@ -530,7 +517,7 @@ app.post('/api/videos/upload', upload.single('video'), async (req, res) => {
         matchId,
         title,
         filePath,
-        parseInt(durationSeconds) || 0,
+        parseInt(durationSeconds),
         req.file.size,
         isHighlight === 'true'
       ]
@@ -740,28 +727,17 @@ app.delete('/api/matches/:matchId', async (req, res) => {
 app.put('/api/matches/:matchId', async (req, res) => {
     try {
         const { matchId } = req.params;
-        // Accept both camelCase (frontend) and snake_case
-        const sport_type = req.body.sportType || req.body.sport_type;
-        const location = req.body.location;
-        const match_date = req.body.matchDate || req.body.match_date;
-        const players = req.body.players || req.body.player_ids || [];
-        const access_password = req.body.accessPassword || req.body.access_password;
-        const is_active = req.body.isActive !== undefined ? req.body.isActive : req.body.is_active;
-        
-        // Filter empty names
-        const playerNames = Array.isArray(players) ? players.filter(p => p && p.trim() !== '') : [];
+        const { sport_type, location, match_date, player_ids } = req.body;
         
         const result = await pool.query(
             `UPDATE matches 
              SET sport_type = COALESCE($1, sport_type),
                  location = COALESCE($2, location),
                  match_date = COALESCE($3, match_date),
-                 player_ids = COALESCE($4, player_ids),
-                 access_password = COALESCE($5, access_password),
-                 is_active = COALESCE($6, is_active)
-             WHERE id = $7
+                 player_ids = COALESCE($4, player_ids)
+             WHERE id = $5
              RETURNING *`,
-            [sport_type, location, match_date, playerNames, access_password, is_active, matchId]
+            [sport_type, location, match_date, player_ids, matchId]
         );
         
         if (result.rows.length === 0) {
@@ -811,15 +787,8 @@ app.get('/api/stats/storage', async (req, res) => {
       nasStorageBytes = getDirectorySize(LOCAL_STORAGE_PATH);
     }
 
-    // Conta file video reali dal NAS
-    let nasVideoCount = 0;
-    try {
-      const files = fsSync.readdirSync(LOCAL_STORAGE_PATH);
-      nasVideoCount = files.filter(f => !f.startsWith(".")).length;
-    } catch (e) {}
-
     res.json({
-      totalVideos: nasVideoCount,
+      totalVideos: parseInt(stats.total_videos) || 0,
       totalSize: nasStorageBytes || parseInt(stats.total_size || 0),
       totalSizeBytes: nasStorageBytes || parseInt(stats.total_size || 0),
       totalSizeGB: ((nasStorageBytes || parseInt(stats.total_size || 0)) / 1024 / 1024 / 1024).toFixed(2),
@@ -912,13 +881,13 @@ app.post('/api/courts', async (req, res) => {
 app.put('/api/courts/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, sport_type, description, price_per_hour, default_duration_minutes, is_active, has_video_recording } = req.body;
+    const { name, sport_type, description, price_per_player, num_players, default_duration_minutes, is_active, has_video_recording } = req.body;
     
     const result = await pool.query(
-      `UPDATE courts SET name = $1, sport_type = $2, description = $3, price_per_hour = $4, 
-       default_duration_minutes = $5, is_active = $6, has_video_recording = $7, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $8 RETURNING *`,
-      [name, sport_type, description, price_per_hour, default_duration_minutes, is_active, has_video_recording, id]
+      `UPDATE courts SET name = $1, sport_type = $2, description = $3, price_per_player = $4, num_players = $5,
+       default_duration_minutes = $6, is_active = $7, has_video_recording = $8, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $9 RETURNING *`,
+      [name, sport_type, description, price_per_player || 0, num_players || 4, default_duration_minutes, is_active, has_video_recording, id]
     );
     
     if (result.rows.length === 0) {
@@ -958,124 +927,80 @@ app.get('/api/opening-hours', async (req, res) => {
 app.get('/api/bookings/available-slots', async (req, res) => {
   try {
     const { court_id, date } = req.query;
-
+    
     if (!court_id || !date) {
       return res.status(400).json({ error: 'court_id e date sono obbligatori' });
     }
-
+    
     // Prendi info campo
     const courtResult = await pool.query('SELECT * FROM courts WHERE id = $1', [court_id]);
     if (courtResult.rows.length === 0) {
       return res.status(404).json({ error: 'Campo non trovato' });
     }
     const court = courtResult.rows[0];
-
+    
     // Prendi giorno della settimana
     const dateObj = new Date(date);
     const dayOfWeek = dateObj.getDay();
-
+    
     // Prendi orari apertura
     const hoursResult = await pool.query(
       'SELECT * FROM opening_hours WHERE day_of_week = $1 AND is_active = true',
       [dayOfWeek]
     );
-
+    
     if (hoursResult.rows.length === 0) {
       return res.json({ slots: [], message: 'Chiuso in questo giorno' });
     }
-
+    
     const openHours = hoursResult.rows[0];
-
-    // Prendi prenotazioni esistenti per quella data e campo (ordinate per orario)
+    
+    // Prendi prenotazioni esistenti per quella data e campo
     const bookingsResult = await pool.query(
-      `SELECT start_time, end_time FROM bookings
-       WHERE court_id = $1 AND booking_date = $2 AND status NOT IN ('cancelled')
-       ORDER BY start_time`,
+      `SELECT start_time, end_time FROM bookings 
+       WHERE court_id = $1 AND booking_date = $2 AND status NOT IN ('cancelled')`,
       [court_id, date]
     );
-
-    const existingBookings = bookingsResult.rows.map(b => ({
-      start: b.start_time.slice(0, 5),
-      end: b.end_time.slice(0, 5)
-    }));
-
-    // Helper: converti HH:MM in minuti
-    const toMinutes = (time) => {
-      const [h, m] = time.split(':').map(Number);
-      return h * 60 + m;
-    };
-    const toTime = (mins) => {
-      const h = Math.floor(mins / 60);
-      const m = mins % 60;
-      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-    };
-
-    const openMin = toMinutes(openHours.open_time.slice(0, 5));
-    const closeMin = toMinutes(openHours.close_time.slice(0, 5));
-    const defaultDuration = court.default_duration_minutes;
-    const pricePerHour = parseFloat(court.price_per_hour);
-
-    // Trova i "buchi" liberi
+    
+    const existingBookings = bookingsResult.rows;
+    
+    // Genera slot disponibili
     const slots = [];
-    let currentMin = openMin;
-
-    // Itera ogni 30 minuti
-    while (currentMin < closeMin) {
-      const slotStart = toTime(currentMin);
-
-      // Trova la prossima prenotazione che inizia dopo o durante questo slot
-      const nextBooking = existingBookings.find(b => toMinutes(b.start) > currentMin);
-      const currentBooking = existingBookings.find(b =>
-        toMinutes(b.start) <= currentMin && toMinutes(b.end) > currentMin
-      );
-
-      if (currentBooking) {
-        // Slot occupato
-        slots.push({
-          start_time: slotStart,
-          end_time: currentBooking.end,
-          duration_minutes: toMinutes(currentBooking.end) - currentMin,
-          is_available: false,
-          price: 0
-        });
-        currentMin += 30;
-      } else {
-        // Slot libero - calcola quanto spazio c'è fino alla prossima prenotazione o chiusura
-        const maxEnd = nextBooking ? Math.min(toMinutes(nextBooking.start), closeMin) : closeMin;
-        const gapMinutes = maxEnd - currentMin;
-
-        // Determina la durata effettiva dello slot (preferisci durata standard, ma usa il gap se più piccolo)
-        let actualDuration;
-        if (gapMinutes >= defaultDuration) {
-          actualDuration = defaultDuration;
-        } else if (gapMinutes >= 60) {
-          actualDuration = 60;
-        } else if (gapMinutes >= 30) {
-          actualDuration = 30;
-        } else {
-          // Gap troppo piccolo, skip
-          currentMin += 30;
-          continue;
-        }
-
-        const slotEnd = toTime(currentMin + actualDuration);
-
-        slots.push({
-          start_time: slotStart,
-          end_time: slotEnd,
-          duration_minutes: actualDuration,
-          is_available: true,
-          price: Math.round(pricePerHour * (actualDuration / 60)),
-          gap_minutes: gapMinutes  // Info extra sul buco disponibile
-        });
-
-        currentMin += 30;
-      }
+    const slotDuration = court.default_duration_minutes;
+    let currentTime = new Date(`2000-01-01T${openHours.open_time}`);
+    const closeTime = new Date(`2000-01-01T${openHours.close_time}`);
+    
+    while (currentTime < closeTime) {
+      const slotStart = currentTime.toTimeString().slice(0, 5);
+      const slotEnd = new Date(currentTime.getTime() + slotDuration * 60000).toTimeString().slice(0, 5);
+      
+      // Verifica se slot finisce prima della chiusura
+      if (new Date(`2000-01-01T${slotEnd}`) > closeTime) break;
+      
+      // Verifica se slot è libero
+      const isBooked = existingBookings.some(b => {
+        const bookStart = b.start_time.slice(0, 5);
+        const bookEnd = b.end_time.slice(0, 5);
+        return (slotStart >= bookStart && slotStart < bookEnd) || 
+               (slotEnd > bookStart && slotEnd <= bookEnd) ||
+               (slotStart <= bookStart && slotEnd >= bookEnd);
+      });
+      
+      slots.push({
+        start_time: slotStart,
+        end_time: slotEnd,
+        duration_minutes: slotDuration,
+        is_available: !isBooked,
+        price: parseFloat(court.price_per_hour) * (slotDuration / 60)
+      });
+      
+      // Prossimo slot (ogni 30 minuti)
+      currentTime = new Date(currentTime.getTime() + 30 * 60000);
     }
-
-    res.json({
-      court,
-      date,
+    
+    res.json({ 
+      court, 
+      date, 
       slots,
       opening: openHours.open_time,
       closing: openHours.close_time
@@ -1205,21 +1130,15 @@ async function createMatchFromBooking(booking, court) {
     const bookingCode = generateBookingCode();
     const password = generatePassword();
     
-    // Gestisci booking_date che potrebbe essere Date o string
-    let dateStr = booking.booking_date;
-    if (booking.booking_date instanceof Date) {
-      dateStr = booking.booking_date.toISOString().split('T')[0];
-    } else if (typeof booking.booking_date === 'string' && booking.booking_date.includes('T')) {
-      dateStr = booking.booking_date.split('T')[0];
-    }
-    const matchDatetime = new Date(`${dateStr}T${booking.start_time}`);
-    
-    console.log('Creating match:', { bookingCode, dateStr, start_time: booking.start_time, matchDatetime });
+    // Calcola datetime partita
+    const matchDatetime = new Date(`${booking.booking_date}T${booking.start_time}`);
     
     const matchResult = await pool.query(
-      `INSERT INTO matches (booking_code, sport_type, location, match_date, access_password, player_ids)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [bookingCode, court.sport_type, court.name, matchDatetime, password, []]
+      `INSERT INTO matches (booking_code, password, sport_type, match_date, 
+         court_name, players, duration_minutes, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, true) RETURNING *`,
+      [bookingCode, password, court.sport_type, matchDatetime, 
+       court.name, [booking.customer_name], booking.duration_minutes]
     );
     
     const match = matchResult.rows[0];
@@ -1230,13 +1149,14 @@ async function createMatchFromBooking(booking, court) {
       [match.id, booking.id]
     );
     
-    console.log(`Match creato per booking ${booking.id}: ${bookingCode}`);
+    console.log(`✅ Match creato per booking ${booking.id}: ${bookingCode}`);
     return match;
   } catch (error) {
     console.error('Error creating match from booking:', error);
     return null;
   }
 }
+
 
 // GET /api/bookings/:id - Get single booking
 app.get('/api/bookings/:id', async (req, res) => {
@@ -1299,7 +1219,7 @@ app.put('/api/bookings/:id/confirm', async (req, res) => {
     
     // Crea match se il campo ha registrazione video
     let match = null;
-    if (!booking.match_id) {  // Crea sempre match alla conferma
+    if (booking.has_video_recording && !booking.match_id) {
       match = await createMatchFromBooking(booking, {
         name: booking.court_name,
         sport_type: booking.sport_type
@@ -1308,7 +1228,7 @@ app.put('/api/bookings/:id/confirm', async (req, res) => {
     
     // Ricarica booking
     const updatedResult = await pool.query(
-      `SELECT b.*, c.name as court_name, c.sport_type, m.booking_code as match_booking_code, m.access_password as match_password
+      `SELECT b.*, c.name as court_name, c.sport_type, m.booking_code as match_booking_code, m.password as match_password
        FROM bookings b 
        JOIN courts c ON b.court_id = c.id 
        LEFT JOIN matches m ON b.match_id = m.id
@@ -1341,27 +1261,6 @@ app.put('/api/bookings/:id/cancel', async (req, res) => {
   } catch (error) {
     console.error('Error cancelling booking:', error);
     res.status(500).json({ error: 'Errore nella cancellazione' });
-  }
-});
-
-// DELETE /api/bookings/:id - Elimina prenotazione
-app.delete('/api/bookings/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    
-    const result = await pool.query(
-      'DELETE FROM bookings WHERE id = $1 RETURNING *',
-      [id]
-    );
-    
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Prenotazione non trovata' });
-    }
-    
-    res.json({ success: true, deleted: result.rows[0] });
-  } catch (error) {
-    console.error('Error deleting booking:', error);
-    res.status(500).json({ error: 'Errore nell eliminazione della prenotazione' });
   }
 });
 

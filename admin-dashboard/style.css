@@ -525,11 +525,12 @@ body {
    TIMELINE VIEW FOR DAILY BOOKINGS
    ======================================== */
 .timeline-container {
+    overflow: visible;
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
     margin-top: 1rem;
-    overflow-x: auto;
+    /* overflow-x: auto; - rimosso */
 }
 
 .timeline-header {
@@ -539,7 +540,7 @@ body {
     background: var(--bg-dark);
     padding: 0.5rem 0.5rem 0.5rem 0;
     border-radius: 8px 8px 0 0;
-    min-width: 1000px;
+    
 }
 
 .timeline-court-label {
@@ -553,7 +554,7 @@ body {
 
 .timeline-hours-container {
     display: grid;
-    grid-template-columns: repeat(14, 1fr);
+    grid-template-columns: repeat(14, 2fr);
     gap: 0;
 }
 
@@ -578,8 +579,8 @@ body {
     grid-template-columns: 120px 1fr;
     gap: 1px;
     background: var(--bg-dark);
-    min-height: 15px; height: 35px;
-    min-width: 1000px;
+    min-height: 50px; height: auto;
+    
 }
 
 .timeline-court-name {
@@ -595,7 +596,7 @@ body {
 .timeline-slots-container {
     position: relative;
     display: grid;
-    grid-template-columns: repeat(28, 1fr);
+    grid-template-columns: repeat(28, minmax(0, 1fr));
     gap: 1px;
     background: var(--bg-card);
 }
@@ -611,6 +612,9 @@ body {
     font-size: 0.7rem;
     color: var(--text-secondary);
     min-height: 50px;
+    flex: 1 1 0;
+    min-width: 0;
+    box-sizing: border-box;
 }
 
 .timeline-slot:hover:not(.occupied) {
@@ -814,7 +818,7 @@ body {
     cursor: pointer;
     transition: all 0.2s;
     padding: 0.5rem;
-    min-height: 15px; height: 35px;
+    min-height: 50px; height: auto;
 }
 
 .calendar-day:hover {
@@ -1069,6 +1073,7 @@ body {
     }
 
     .timeline-container {
+    overflow: visible;
         font-size: 0.7rem;
     }
 
@@ -1260,4 +1265,103 @@ body {
 }
 .calendar-day.has-booking:hover {
     background: rgba(220, 38, 38, 0.6) !important;
+}
+
+/* Timeline Slots Styles - Semplice con linee orarie */
+.booking-timeline-container {
+    margin: 15px 0;
+}
+
+.timeline-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+    border-left: 2px dashed rgba(255,255,255,0.2);
+    padding-left: 10px;
+    position: relative;
+}
+
+/* Linea tratteggiata ogni ora (ogni 2 slot da 30min) */
+.timeline-grid::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    border-left: 1px dashed rgba(255,255,255,0.15);
+}
+
+.timeline-slot {
+    flex: 0 0 calc(50% - 5px);
+    margin: 2px;
+    padding: 10px 8px;
+    background: rgba(40, 40, 50, 0.6);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 4px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    position: relative;
+}
+
+/* Linea tratteggiata a destra di ogni slot pari (fine ora) */
+.timeline-slot:nth-child(2n) {
+    border-right: 2px dashed rgba(255,255,255,0.2);
+    margin-right: 10px;
+}
+
+.timeline-slot.available {
+    background: rgba(46, 204, 113, 0.1);
+    border-color: rgba(46, 204, 113, 0.3);
+    color: #2ecc71;
+}
+
+.timeline-slot.available:hover {
+    background: rgba(46, 204, 113, 0.25);
+    border-color: #2ecc71;
+}
+
+.timeline-slot.occupied {
+    background: rgba(231, 76, 60, 0.1);
+    border-color: rgba(231, 76, 60, 0.3);
+    color: #e74c3c;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.timeline-slot.selected {
+    background: rgba(52, 152, 219, 0.3);
+    border-color: #3498db;
+    color: white;
+    box-shadow: 0 0 8px rgba(52, 152, 219, 0.4);
+}
+
+.slot-time {
+    display: block;
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.slot-end {
+    display: block;
+    font-size: 10px;
+    opacity: 0.7;
+}
+
+.slot-price {
+    display: block;
+    font-size: 11px;
+    margin-top: 2px;
+    opacity: 0.8;
+}
+
+.loading-slots, .no-slots, .error-slots {
+    text-align: center;
+    padding: 20px;
+    color: #888;
+    font-style: italic;
+}
+
+.error-slots {
+    color: #e74c3c;
 }
