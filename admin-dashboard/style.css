@@ -818,6 +818,29 @@ body {
     color: var(--bg-dark);
 }
 
+/* Date Picker styled as button */
+.date-picker-btn {
+    background: var(--bg-dark);
+    border: 1px solid var(--accent-primary);
+    color: var(--accent-primary);
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 0.9rem;
+    min-width: 40px;
+}
+
+.date-picker-btn:hover {
+    background: var(--accent-primary);
+    color: var(--bg-dark);
+}
+
+.date-picker-btn::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+    cursor: pointer;
+}
+
 .calendar-grid {
     display: grid;
     grid-template-columns: repeat(7, 1fr);

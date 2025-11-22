@@ -1089,6 +1089,29 @@ function setupModals() {
         renderCalendar();
     });
 
+    // Date picker - jump to specific date
+    document.getElementById('date-picker')?.addEventListener('change', (e) => {
+        const dateStr = e.target.value;
+        if (dateStr) {
+            const [year, month, day] = dateStr.split('-').map(Number);
+            currentYear = year;
+            currentMonth = month - 1; // month is 0-indexed
+            renderCalendar();
+            // Select the chosen date after calendar renders
+            setTimeout(() => selectDate(dateStr), 100);
+        }
+    });
+
+    // Today button
+    document.getElementById('today-btn')?.addEventListener('click', () => {
+        const now = new Date();
+        currentYear = now.getFullYear();
+        currentMonth = now.getMonth();
+        renderCalendar();
+        const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+        setTimeout(() => selectDate(todayStr), 100);
+    });
+
     // New booking button - propone data odierna, campo da selezionare
     document.getElementById('new-booking-btn')?.addEventListener('click', () => {
         document.getElementById('booking-form').reset();
