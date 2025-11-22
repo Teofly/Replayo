@@ -1213,9 +1213,16 @@ async function createMatchFromBooking(booking, court, playerNames = null) {
     // Usa player_names passati o estrai da booking
     const players = playerNames || booking.player_names || [booking.customer_name];
 
-    // Calcola datetime partita
-    const bookingDate = booking.booking_date.split ? booking.booking_date.split('T')[0] : booking.booking_date;
-    const matchDatetime = new Date(`${bookingDate}T${booking.start_time}`);
+    // Calcola datetime partita - gestisce sia Date che stringa
+    let bookingDateStr;
+    if (booking.booking_date instanceof Date) {
+      bookingDateStr = booking.booking_date.toISOString().split('T')[0];
+    } else if (typeof booking.booking_date === 'string') {
+      bookingDateStr = booking.booking_date.split('T')[0];
+    } else {
+      bookingDateStr = new Date(booking.booking_date).toISOString().split('T')[0];
+    }
+    const matchDatetime = new Date(`${bookingDateStr}T${booking.start_time}`);
 
     const matchResult = await pool.query(
       `INSERT INTO matches (booking_code, access_password, sport_type, match_date,

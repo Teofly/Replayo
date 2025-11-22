@@ -726,11 +726,6 @@ async function confirmBooking() {
         if (response.ok) {
             document.getElementById('booking-details-modal').style.display = 'none';
             if (selectedDate) renderDailyTimeline(selectedDate);
-
-            // Mostra codice e password del match se creato
-            if (data.match_booking_code && data.match_password) {
-                alert(`✅ Prenotazione confermata!\n\nCodice Match: ${data.match_booking_code}\nPassword: ${data.match_password}\n\nCondividi questi dati con i giocatori.`);
-            }
         } else {
             throw new Error(data.error || 'Errore conferma');
         }
