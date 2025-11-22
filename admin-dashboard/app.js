@@ -828,7 +828,6 @@ async function loadAvailableSlots(courtId, date) {
             html += `
                 <div class="timeline-slot ${statusClass}" onclick="selectBookingSlot(this, '${startTime}')" data-time="${startTime}">
                     <span class="slot-time">${startTime}</span>
-                    ${endTime ? `<span class="slot-end">- ${endTime}</span>` : ''}
                     ${priceLabel ? `<span class="slot-price">${priceLabel}</span>` : ''}
                 </div>
             `;
