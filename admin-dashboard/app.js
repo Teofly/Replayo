@@ -424,12 +424,46 @@ async function loadMonthBookings() {
         const data = await response.json();
         bookingsCache = data.bookings || data || [];
 
-        // Mark days with bookings
+        // Ensure courts are loaded for coverage calculation
+        if (courtsCache.length === 0) {
+            await loadCourts();
+        }
+
+        // Calculate total available minutes per day (all active courts, 8:00-22:00 = 14 hours)
+        const activeCourts = courtsCache.filter(c => c.is_active);
+        const hoursPerDay = 14; // 8:00 to 22:00
+        const totalAvailableMinutes = activeCourts.length * hoursPerDay * 60;
+
+        // Group bookings by date and calculate coverage
+        const coverageByDate = {};
         bookingsCache.forEach(booking => {
             const bookingDate = booking.booking_date.split('T')[0];
-            const dayEl = document.querySelector(`.calendar-day[data-date="${bookingDate}"]`);
+            if (!coverageByDate[bookingDate]) {
+                coverageByDate[bookingDate] = 0;
+            }
+            const duration = booking.duration_minutes || 90;
+            coverageByDate[bookingDate] += duration;
+        });
+
+        // Update calendar days with coverage bars
+        Object.keys(coverageByDate).forEach(dateStr => {
+            const dayEl = document.querySelector(`.calendar-day[data-date="${dateStr}"]`);
             if (dayEl) {
                 dayEl.classList.add('has-bookings');
+                const bookedMinutes = coverageByDate[dateStr];
+                const coveragePercent = totalAvailableMinutes > 0
+                    ? Math.min(100, Math.round((bookedMinutes / totalAvailableMinutes) * 100))
+                    : 0;
+
+                // Add coverage bar
+                let barContainer = dayEl.querySelector('.coverage-bar-container');
+                if (!barContainer) {
+                    barContainer = document.createElement('div');
+                    barContainer.className = 'coverage-bar-container';
+                    dayEl.appendChild(barContainer);
+                }
+                barContainer.innerHTML = `<div class="coverage-bar" style="width: ${coveragePercent}%"></div>`;
+                barContainer.title = `Copertura: ${coveragePercent}% (${Math.round(bookedMinutes/60)}h su ${activeCourts.length * hoursPerDay}h)`;
             }
         });
     } catch (error) {

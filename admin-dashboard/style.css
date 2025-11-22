@@ -837,13 +837,15 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     background: var(--bg-dark);
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.2s;
-    padding: 0.5rem;
-    min-height: 50px; height: auto;
+    padding: 0.5rem 0.5rem 1rem 0.5rem;
+    min-height: 55px;
+    height: auto;
+    position: relative;
 }
 
 .calendar-day:hover {
@@ -859,13 +861,34 @@ body {
     background: linear-gradient(135deg, rgba(0, 255, 245, 0.3), rgba(123, 44, 191, 0.3));
 }
 
-.calendar-day.has-bookings::after {
-    content: '';
-    width: 6px;
+/* Coverage bar inside calendar days */
+.coverage-bar-container {
+    position: absolute;
+    bottom: 4px;
+    left: 4px;
+    right: 4px;
     height: 6px;
-    background: var(--success);
-    border-radius: 50%;
-    margin-top: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.coverage-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--success), var(--accent-primary));
+    border-radius: 3px;
+    transition: width 0.3s ease;
+    min-width: 2px;
+}
+
+/* Calendar day needs relative positioning for the bar */
+.calendar-day {
+    position: relative;
+}
+
+/* Remove old dot indicator when has coverage bar */
+.calendar-day.has-bookings::after {
+    display: none;
 }
 
 /* ========================================
