@@ -424,17 +424,42 @@ app.post('/api/matches/verify', async (req, res) => {
       });
     }
 
-    // Check player name
+    // Check player name - first try player_names array, then player_ids as UUID
     let playerFound = false;
-    for (const playerId of match.player_ids) {
-      const userResult = await pool.query(
-        'SELECT name FROM users WHERE id = $1',
-        [playerId]
+
+    // Check in player_names array (direct string comparison)
+    if (match.player_names && Array.isArray(match.player_names)) {
+      playerFound = match.player_names.some(name =>
+        name.toLowerCase() === playerName.toLowerCase()
       );
-      if (userResult.rows.length > 0 &&
-          userResult.rows[0].name.toLowerCase() === playerName.toLowerCase()) {
-        playerFound = true;
-        break;
+    }
+
+    // If not found in player_names, try player_ids as UUIDs (legacy support)
+    if (!playerFound && match.player_ids && Array.isArray(match.player_ids)) {
+      for (const playerId of match.player_ids) {
+        // Check if it's a valid UUID before querying
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (uuidRegex.test(playerId)) {
+          try {
+            const userResult = await pool.query(
+              'SELECT name FROM users WHERE id = $1',
+              [playerId]
+            );
+            if (userResult.rows.length > 0 &&
+                userResult.rows[0].name.toLowerCase() === playerName.toLowerCase()) {
+              playerFound = true;
+              break;
+            }
+          } catch (e) {
+            // Skip invalid UUID
+          }
+        } else {
+          // It's a name string, compare directly
+          if (playerId.toLowerCase() === playerName.toLowerCase()) {
+            playerFound = true;
+            break;
+          }
+        }
       }
     }
 
@@ -597,6 +622,53 @@ app.get('/api/videos/:videoId/stream', async (req, res) => {
   }
 });
 
+// Download video (force download with Content-Disposition)
+app.get('/api/videos/:videoId/download', async (req, res) => {
+  try {
+    const { videoId } = req.params;
+
+    // Get video info
+    const result = await pool.query(
+      'SELECT file_path, title FROM videos WHERE id = $1',
+      [videoId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Video non trovato' });
+    }
+
+    const { file_path, title } = result.rows[0];
+    const filename = title ? `${title}.mp4` : 'video.mp4';
+
+    // Increment download count
+    await pool.query(
+      'UPDATE videos SET download_count = download_count + 1 WHERE id = $1',
+      [videoId]
+    );
+
+    if (STORAGE_TYPE === 's3') {
+      const videoUrl = await getVideoUrl(file_path);
+      res.redirect(videoUrl);
+    } else {
+      const stat = await fs.stat(file_path);
+      const fileSize = stat.size;
+
+      res.writeHead(200, {
+        'Content-Length': fileSize,
+        'Content-Type': 'video/mp4',
+        'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
+      });
+
+      const fileStream = (await import('fs')).createReadStream(file_path);
+      fileStream.pipe(res);
+    }
+
+  } catch (error) {
+    console.error('Error downloading video:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Delete video
 app.delete('/api/videos/:videoId', async (req, res) => {
   try {
@@ -727,20 +799,22 @@ app.delete('/api/matches/:matchId', async (req, res) => {
 app.put('/api/matches/:matchId', async (req, res) => {
     try {
         const { matchId } = req.params;
-        const { sport_type, location, match_date, player_ids, players } = req.body;
+        const { sport_type, location, match_date, player_ids, players, accessPassword, access_password } = req.body;
         const finalPlayerIds = player_ids || players;
-        
+        const finalPassword = accessPassword || access_password;
+
         const result = await pool.query(
-            `UPDATE matches 
+            `UPDATE matches
              SET sport_type = COALESCE($1, sport_type),
                  location = COALESCE($2, location),
                  match_date = COALESCE($3, match_date),
-                 player_ids = COALESCE($4, player_ids)
-             WHERE id = $5
+                 player_ids = COALESCE($4, player_ids),
+                 access_password = COALESCE($5, access_password)
+             WHERE id = $6
              RETURNING *`,
-            [sport_type, location, match_date, finalPlayerIds, matchId]
+            [sport_type, location, match_date, finalPlayerIds, finalPassword, matchId]
         );
-        
+
         if (result.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'Match not found' });
         }
@@ -1058,11 +1132,16 @@ app.get('/api/bookings', async (req, res) => {
 // POST /api/bookings - Crea prenotazione
 app.post('/api/bookings', async (req, res) => {
   try {
-    const { 
+    const {
       court_id, booking_date, start_time, end_time,
       customer_name, customer_email, customer_phone, num_players,
-      notes, auto_confirm
+      notes, auto_confirm, players
     } = req.body;
+
+    // Estrai nomi giocatori
+    const playerNames = players && Array.isArray(players)
+      ? players.map(p => p.player_name || p.name).filter(n => n)
+      : [customer_name];
     
     // Verifica campo
     const courtResult = await pool.query('SELECT * FROM courts WHERE id = $1', [court_id]);
@@ -1108,13 +1187,16 @@ app.post('/api/bookings', async (req, res) => {
     
     const booking = bookingResult.rows[0];
     
+    // Salva player_names nel booking per uso successivo
+    booking.player_names = playerNames;
+
     // Se auto_confirm, crea subito il match
     if (auto_confirm && court.has_video_recording) {
-      const matchResult = await createMatchFromBooking(booking, court);
+      const matchResult = await createMatchFromBooking(booking, court, playerNames);
       if (matchResult) {
         booking.match_id = matchResult.id;
         booking.match_booking_code = matchResult.booking_code;
-        booking.match_password = matchResult.password;
+        booking.match_password = matchResult.access_password;
       }
     }
     
@@ -1126,31 +1208,35 @@ app.post('/api/bookings', async (req, res) => {
 });
 
 // Helper: Crea match da prenotazione
-async function createMatchFromBooking(booking, court) {
+async function createMatchFromBooking(booking, court, playerNames = null) {
   try {
     const bookingCode = generateBookingCode();
     const password = generatePassword();
-    
+
+    // Usa player_names passati o estrai da booking
+    const players = playerNames || booking.player_names || [booking.customer_name];
+
     // Calcola datetime partita
-    const matchDatetime = new Date(`${booking.booking_date}T${booking.start_time}`);
-    
+    const bookingDate = booking.booking_date.split ? booking.booking_date.split('T')[0] : booking.booking_date;
+    const matchDatetime = new Date(`${bookingDate}T${booking.start_time}`);
+
     const matchResult = await pool.query(
-      `INSERT INTO matches (booking_code, access_password, sport_type, match_date, 
-         location, player_ids, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, true) RETURNING *`,
-      [bookingCode, password, court.sport_type, matchDatetime, 
-       court.name, [booking.customer_name]]
+      `INSERT INTO matches (booking_code, access_password, sport_type, match_date,
+         location, player_ids, player_names, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, true) RETURNING *`,
+      [bookingCode, password, court.sport_type, matchDatetime,
+       court.name, players, players]
     );
-    
+
     const match = matchResult.rows[0];
-    
+
     // Aggiorna booking con match_id
     await pool.query(
       'UPDATE bookings SET match_id = $1 WHERE id = $2',
       [match.id, booking.id]
     );
-    
-    console.log(`✅ Match creato per booking ${booking.id}: ${bookingCode}`);
+
+    console.log(`✅ Match creato per booking ${booking.id}: ${bookingCode} - Password: ${password} - Giocatori: ${players.join(', ')}`);
     return match;
   } catch (error) {
     console.error('Error creating match from booking:', error);
@@ -1193,38 +1279,41 @@ app.get('/api/bookings/:id', async (req, res) => {
 app.put('/api/bookings/:id/confirm', async (req, res) => {
   try {
     const { id } = req.params;
-    const { payment_status, payment_method } = req.body;
-    
+    const { payment_status, payment_method, player_names } = req.body;
+
     // Prendi prenotazione con info campo
     const bookingResult = await pool.query(
       `SELECT b.*, c.name as court_name, c.sport_type, c.has_video_recording
        FROM bookings b JOIN courts c ON b.court_id = c.id WHERE b.id = $1`,
       [id]
     );
-    
+
     if (bookingResult.rows.length === 0) {
       return res.status(404).json({ error: 'Prenotazione non trovata' });
     }
-    
+
     const booking = bookingResult.rows[0];
-    
+
     if (booking.status === 'confirmed') {
       return res.status(400).json({ error: 'Prenotazione già confermata' });
     }
-    
+
     // Aggiorna stato
     await pool.query(
       `UPDATE bookings SET status = 'confirmed', payment_status = $1, payment_method = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3`,
       [payment_status || 'paid', payment_method, id]
     );
-    
+
+    // Usa player_names passati o customer_name come fallback
+    const players = player_names && player_names.length > 0 ? player_names : [booking.customer_name];
+
     // Crea match se il campo ha registrazione video
     let match = null;
     if (booking.has_video_recording && !booking.match_id) {
       match = await createMatchFromBooking(booking, {
         name: booking.court_name,
         sport_type: booking.sport_type
-      });
+      }, players);
     }
     
     // Ricarica booking

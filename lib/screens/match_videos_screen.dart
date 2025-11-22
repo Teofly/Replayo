@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -157,6 +158,38 @@ class _MatchVideosScreenState extends State<MatchVideosScreen>
                         style: GoogleFonts.roboto(
                           fontSize: 14,
                           color: Colors.white70,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      GestureDetector(
+                        onTap: () {
+                          Clipboard.setData(ClipboardData(text: widget.match.bookingCode));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Codice ${widget.match.bookingCode} copiato!'),
+                              backgroundColor: AppTheme.neonBlue,
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
+                        },
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              widget.match.bookingCode,
+                              style: GoogleFonts.robotoMono(
+                                fontSize: 13,
+                                color: Colors.white,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Icon(
+                              Icons.copy,
+                              size: 14,
+                              color: Colors.white70,
+                            ),
+                          ],
                         ),
                       ),
                     ],

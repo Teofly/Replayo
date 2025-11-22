@@ -24,6 +24,7 @@ class _MatchAccessScreenState extends State<MatchAccessScreen> {
   final AuthService _authService = AuthService();
 
   bool _isLoading = false;
+  bool _obscurePassword = true;
 
   @override
   void initState() {
@@ -215,6 +216,12 @@ class _MatchAccessScreenState extends State<MatchAccessScreen> {
                 TextFormField(
                   controller: _bookingCodeController,
                   style: const TextStyle(color: Colors.white),
+                  enableInteractiveSelection: true,
+                  enableSuggestions: true,
+                  autocorrect: false,
+                  readOnly: false,
+                  keyboardType: TextInputType.text,
+                  textInputAction: TextInputAction.next,
                   decoration: InputDecoration(
                     labelText: 'Codice Prenotazione',
                     prefixIcon: Icon(Icons.confirmation_number,
@@ -226,17 +233,27 @@ class _MatchAccessScreenState extends State<MatchAccessScreen> {
                     }
                     return null;
                   },
-                ).animate().slideX(begin: -0.3, delay: 300.ms),
+                ).animate().fadeIn(delay: 300.ms),
 
                 const SizedBox(height: 20),
 
                 TextFormField(
                   controller: _passwordController,
                   style: const TextStyle(color: Colors.white),
-                  obscureText: true,
+                  obscureText: _obscurePassword,
+                  enableInteractiveSelection: true,
+                  enableSuggestions: false,
+                  autocorrect: false,
                   decoration: InputDecoration(
                     labelText: 'Password',
                     prefixIcon: Icon(Icons.key, color: AppTheme.neonBlue),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                        color: AppTheme.neonBlue.withAlpha(180),
+                      ),
+                      onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                    ),
                   ),
                   validator: (value) {
                     if (value == null || value.isEmpty) {
@@ -244,13 +261,16 @@ class _MatchAccessScreenState extends State<MatchAccessScreen> {
                     }
                     return null;
                   },
-                ).animate().slideX(begin: 0.3, delay: 400.ms),
+                ).animate().fadeIn(delay: 400.ms),
 
                 const SizedBox(height: 20),
 
                 TextFormField(
                   controller: _playerNameController,
                   style: const TextStyle(color: Colors.white),
+                  enableInteractiveSelection: true,
+                  keyboardType: TextInputType.name,
+                  textInputAction: TextInputAction.done,
                   decoration: InputDecoration(
                     labelText: 'Nome Giocatore',
                     prefixIcon: Icon(Icons.person, color: AppTheme.neonBlue),
@@ -261,7 +281,7 @@ class _MatchAccessScreenState extends State<MatchAccessScreen> {
                     }
                     return null;
                   },
-                ).animate().slideX(begin: -0.3, delay: 500.ms),
+                ).animate().fadeIn(delay: 500.ms),
 
                 const SizedBox(height: 40),
 

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:chewie/chewie.dart';
 import 'package:video_player/video_player.dart' as vp;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../config/app_theme.dart';
 import '../models/video.dart';
 import '../services/database_service.dart';
@@ -106,28 +108,39 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     });
 
     try {
-      // Simulate download progress
-      for (int i = 0; i <= 100; i += 10) {
-        await Future.delayed(const Duration(milliseconds: 200));
-        setState(() => _downloadProgress = i / 100);
-      }
+      // Build download URL
+      final downloadUrl = '${ApiService.baseUrl}/videos/${widget.video.id}/download';
 
-      await _dbService.incrementVideoDownloadCount(widget.video.id);
+      // Open download URL in browser
+      final uri = Uri.parse(downloadUrl);
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Video scaricato con successo!',
-              style: GoogleFonts.roboto(color: Colors.white),
-            ),
-            backgroundColor: AppTheme.neonGreen,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(
+          uri,
+          mode: LaunchMode.externalApplication,
         );
+
+        // Increment download count
+        await _dbService.incrementVideoDownloadCount(widget.video.id);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Download avviato! Controlla la cartella Download o File.',
+                style: GoogleFonts.roboto(color: Colors.white),
+              ),
+              backgroundColor: AppTheme.neonGreen,
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 4),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          );
+        }
+      } else {
+        throw Exception('Impossibile aprire il link di download');
       }
     } catch (e) {
       if (mounted) {

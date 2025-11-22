@@ -710,15 +710,28 @@ async function confirmBooking() {
     if (!currentBookingDetails) return;
 
     try {
+        // Prepara player_names dal booking (usa customer_name come fallback)
+        const playerNames = currentBookingDetails.player_names ||
+            (currentBookingDetails.players ? currentBookingDetails.players.map(p => p.player_name || p.name) : null) ||
+            [currentBookingDetails.customer_name];
+
         const response = await fetch(`${API_BASE_URL}/bookings/${currentBookingDetails.id}/confirm`, {
-            method: 'PUT'
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ player_names: playerNames })
         });
+
+        const data = await response.json();
 
         if (response.ok) {
             document.getElementById('booking-details-modal').style.display = 'none';
             if (selectedDate) renderDailyTimeline(selectedDate);
+
+            // Mostra codice e password del match se creato
+            if (data.match_booking_code && data.match_password) {
+                alert(`✅ Prenotazione confermata!\n\nCodice Match: ${data.match_booking_code}\nPassword: ${data.match_password}\n\nCondividi questi dati con i giocatori.`);
+            }
         } else {
-            const data = await response.json();
             throw new Error(data.error || 'Errore conferma');
         }
     } catch (error) {
