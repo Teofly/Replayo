@@ -47,5 +47,11 @@
 	<true/>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>RePlayo richiede l'accesso alla libreria foto per salvare i video delle partite nel rullino fotografico.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>RePlayo richiede l'accesso alla libreria foto per visualizzare e gestire i video delle partite.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>RePlayo richiede l'accesso alla fotocamera per registrare video delle partite.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>RePlayo richiede l'accesso al microfono per registrare l'audio durante le partite.</string>
 </dict>
 </plist>

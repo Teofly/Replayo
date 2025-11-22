@@ -215,12 +215,25 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Future<void> _shareVideo() async {
     try {
-      final text =
-          'Guarda il video della mia partita: ${widget.video.title}\n\nScarica RePlayo per vedere i tuoi video!';
+      // Link diretto per scaricare il video
+      final downloadUrl = '${ApiService.baseUrl}/videos/${widget.video.id}/stream';
+      final text = '${widget.video.title}\n\nScarica il video:\n$downloadUrl';
+
+      // Get screen size for share position origin (required on iPad/iOS)
+      final box = context.findRenderObject() as RenderBox?;
+      final sharePositionOrigin = box != null
+          ? Rect.fromLTWH(
+              box.size.width / 2,
+              box.size.height / 2,
+              1,
+              1,
+            )
+          : const Rect.fromLTWH(100, 100, 1, 1);
 
       await Share.share(
         text,
         subject: 'RePlayo - ${widget.video.title}',
+        sharePositionOrigin: sharePositionOrigin,
       );
     } catch (e) {
       if (mounted) {

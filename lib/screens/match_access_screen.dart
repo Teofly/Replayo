@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:qr_code_scanner/qr_code_scanner.dart';
+import 'dart:io' show Platform;
 import '../config/app_theme.dart';
 import '../services/auth_service.dart';
 import 'match_videos_screen.dart';
@@ -22,9 +24,13 @@ class _MatchAccessScreenState extends State<MatchAccessScreen> {
   final _passwordController = TextEditingController();
   final _playerNameController = TextEditingController();
   final AuthService _authService = AuthService();
+  final GlobalKey qrKey = GlobalKey(debugLabel: 'QR');
 
   bool _isLoading = false;
   bool _obscurePassword = true;
+  bool _showScanner = false;
+  QRViewController? _qrController;
+  bool _isProcessingQR = false;
 
   @override
   void initState() {
@@ -34,15 +40,109 @@ class _MatchAccessScreenState extends State<MatchAccessScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _showWebQRNotSupported();
       });
+    } else if (widget.useQRScanner && !kIsWeb) {
+      _showScanner = true;
+    }
+  }
+
+  @override
+  void reassemble() {
+    super.reassemble();
+    if (!kIsWeb && _qrController != null) {
+      if (Platform.isAndroid) {
+        _qrController!.pauseCamera();
+      } else if (Platform.isIOS) {
+        _qrController!.resumeCamera();
+      }
     }
   }
 
   @override
   void dispose() {
+    _qrController?.dispose();
     _bookingCodeController.dispose();
     _passwordController.dispose();
     _playerNameController.dispose();
     super.dispose();
+  }
+
+  void _onQRViewCreated(QRViewController controller) {
+    _qrController = controller;
+    controller.scannedDataStream.listen((scanData) {
+      if (_isProcessingQR) return;
+      _processQRCode(scanData.code);
+    });
+  }
+
+  Future<void> _processQRCode(String? code) async {
+    if (code == null || code.isEmpty) return;
+
+    setState(() => _isProcessingQR = true);
+    _qrController?.pauseCamera();
+
+    // Formato QR: booking_code|password
+    final parts = code.split('|');
+    if (parts.length >= 2) {
+      _bookingCodeController.text = parts[0];
+      _passwordController.text = parts[1];
+
+      // Chiedi nome giocatore
+      final playerName = await _showPlayerNameDialog();
+      if (playerName != null && playerName.isNotEmpty) {
+        _playerNameController.text = playerName;
+        setState(() => _showScanner = false);
+        _handleManualAccess();
+      } else {
+        _qrController?.resumeCamera();
+        setState(() => _isProcessingQR = false);
+      }
+    } else {
+      _showErrorDialog('QR Code non valido');
+      _qrController?.resumeCamera();
+      setState(() => _isProcessingQR = false);
+    }
+  }
+
+  Future<String?> _showPlayerNameDialog() async {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.darkCard,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: AppTheme.neonBlue.withAlpha(76)),
+        ),
+        title: Text(
+          'Inserisci il tuo nome',
+          style: GoogleFonts.orbitron(color: AppTheme.neonBlue),
+        ),
+        content: TextField(
+          controller: controller,
+          style: const TextStyle(color: Colors.white),
+          decoration: InputDecoration(
+            hintText: 'Nome Giocatore',
+            hintStyle: TextStyle(color: Colors.white38),
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, null),
+            child: Text('Annulla', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.neonBlue,
+              foregroundColor: AppTheme.darkBg,
+            ),
+            child: const Text('Conferma'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showWebQRNotSupported() {
@@ -153,9 +253,17 @@ class _MatchAccessScreenState extends State<MatchAccessScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          'Inserisci Codice',
+          _showScanner ? 'Scansiona QR Code' : 'Inserisci Codice',
           style: GoogleFonts.orbitron(),
         ),
+        actions: [
+          if (!kIsWeb)
+            IconButton(
+              icon: Icon(_showScanner ? Icons.edit : Icons.qr_code_scanner),
+              onPressed: () => setState(() => _showScanner = !_showScanner),
+              tooltip: _showScanner ? 'Inserimento manuale' : 'Scansiona QR',
+            ),
+        ],
       ),
       body: _isLoading
           ? Center(
@@ -171,7 +279,57 @@ class _MatchAccessScreenState extends State<MatchAccessScreen> {
                 ],
               ),
             )
-          : _buildManualForm(),
+          : _showScanner ? _buildQRScanner() : _buildManualForm(),
+    );
+  }
+
+  Widget _buildQRScanner() {
+    return Column(
+      children: [
+        Expanded(
+          flex: 4,
+          child: QRView(
+            key: qrKey,
+            onQRViewCreated: _onQRViewCreated,
+            overlay: QrScannerOverlayShape(
+              borderColor: AppTheme.neonBlue,
+              borderRadius: 10,
+              borderLength: 30,
+              borderWidth: 10,
+              cutOutSize: 300,
+            ),
+          ),
+        ),
+        Expanded(
+          flex: 1,
+          child: Container(
+            color: AppTheme.darkBg,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Inquadra il QR Code della prenotazione',
+                    style: GoogleFonts.roboto(
+                      color: Colors.white70,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextButton.icon(
+                    onPressed: () => setState(() => _showScanner = false),
+                    icon: Icon(Icons.edit, color: AppTheme.neonBlue),
+                    label: Text(
+                      'Inserimento manuale',
+                      style: TextStyle(color: AppTheme.neonBlue),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
