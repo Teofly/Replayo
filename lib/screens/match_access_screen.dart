@@ -31,6 +31,7 @@ class _MatchAccessScreenState extends State<MatchAccessScreen> {
   bool _showScanner = false;
   QRViewController? _qrController;
   bool _isProcessingQR = false;
+  bool _isClosing = false;
 
   @override
   void initState() {
@@ -68,10 +69,23 @@ class _MatchAccessScreenState extends State<MatchAccessScreen> {
 
   // Ferma camera e naviga indietro
   Future<void> _handleBackNavigation() async {
-    if (_qrController != null && _showScanner) {
-      await _qrController!.stopCamera();
-      await Future.delayed(const Duration(milliseconds: 100));
+    if (_isClosing) return; // Previene chiamate multiple
+    _isClosing = true;
+
+    // Prima nascondi il QRView (mostra il form invece)
+    if (_showScanner) {
+      setState(() => _showScanner = false);
     }
+
+    // Ferma la camera
+    if (_qrController != null) {
+      await _qrController!.stopCamera();
+    }
+
+    // Aspetta che il QRView sia completamente nascosto
+    await Future.delayed(const Duration(milliseconds: 150));
+
+    // Ora naviga indietro
     if (mounted) {
       Navigator.of(context).pop();
     }
