@@ -70,17 +70,17 @@ class _MatchAccessScreenState extends State<MatchAccessScreen> {
   // Ferma camera e naviga indietro
   Future<void> _handleBackNavigation() async {
     if (_isClosing) return; // Previene chiamate multiple
-    _isClosing = true;
 
-    // Prima nascondi il QRView (mostra il form invece)
-    if (_showScanner) {
-      setState(() => _showScanner = false);
-    }
+    // Rendi lo schermo completamente nero prima di navigare
+    setState(() {
+      _isClosing = true;
+      _showScanner = false;
+    });
 
-    // Breve delay per permettere il rebuild senza QRView
-    await Future.delayed(const Duration(milliseconds: 50));
+    // Aspetta che lo schermo diventi nero
+    await Future.delayed(const Duration(milliseconds: 100));
 
-    // Naviga indietro immediatamente - la camera si fermerà nel dispose
+    // Naviga indietro
     if (mounted) {
       Navigator.of(context).pop();
     }
@@ -331,21 +331,23 @@ class _MatchAccessScreenState extends State<MatchAccessScreen> {
               ),
           ],
         ),
-        body: _isLoading
-            ? Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    CircularProgressIndicator(color: AppTheme.neonBlue),
-                    const SizedBox(height: 20),
-                    Text(
-                      'Verifica in corso...',
-                      style: GoogleFonts.roboto(color: Colors.white70),
+        body: _isClosing
+            ? Container(color: AppTheme.darkBg) // Schermo nero durante la chiusura
+            : _isLoading
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(color: AppTheme.neonBlue),
+                        const SizedBox(height: 20),
+                        Text(
+                          'Verifica in corso...',
+                          style: GoogleFonts.roboto(color: Colors.white70),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              )
-            : _showScanner ? _buildQRScanner() : _buildManualForm(),
+                  )
+                : _showScanner ? _buildQRScanner() : _buildManualForm(),
       ),
     );
   }
