@@ -124,6 +124,28 @@ class HomeScreen extends StatelessWidget {
 
                   const SizedBox(height: 40),
 
+                  // Info Club section (prima di Sport Disponibili)
+                  Text(
+                    'Info Club',
+                    style: GoogleFonts.orbitron(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ).animate().fadeIn(delay: 400.ms),
+
+                  const SizedBox(height: 20),
+
+                  _buildClubCard(
+                    context,
+                    name: 'Sporty',
+                    description: 'Centro sportivo con campi da padel, tennis e calcetto',
+                    color: AppTheme.neonGreen,
+                    onTap: () => _showClubGallery(context, 'Sporty'),
+                  ).animate().slideX(begin: 0.3, delay: 450.ms),
+
+                  const SizedBox(height: 50),
+
                   // Sports section
                   Text(
                     'Sport Disponibili',
@@ -132,7 +154,7 @@ class HomeScreen extends StatelessWidget {
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
                     ),
-                  ).animate().fadeIn(delay: 400.ms),
+                  ).animate().fadeIn(delay: 500.ms),
 
                   const SizedBox(height: 20),
 
@@ -198,6 +220,8 @@ class HomeScreen extends StatelessWidget {
                     description: 'Analizza le tue performance nel tempo',
                     color: AppTheme.neonPink,
                   ).animate().slideY(begin: 0.3, delay: 1100.ms),
+
+                  const SizedBox(height: 40),
                 ],
               ),
             ),
@@ -410,6 +434,262 @@ class HomeScreen extends StatelessWidget {
           );
         },
         transitionDuration: const Duration(milliseconds: 400),
+      ),
+    );
+  }
+
+  Widget _buildClubCard(
+    BuildContext context, {
+    required String name,
+    required String description,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: AppTheme.darkCard,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: color.withOpacity(0.5), width: 2),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.3),
+              blurRadius: 20,
+              spreadRadius: 2,
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [color, color.withOpacity(0.7)],
+                ),
+                borderRadius: BorderRadius.circular(15),
+              ),
+              child: const Icon(
+                Icons.sports_tennis,
+                size: 40,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    style: GoogleFonts.orbitron(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    description,
+                    style: GoogleFonts.roboto(
+                      fontSize: 14,
+                      color: Colors.white70,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Tocca per vedere le foto →',
+                    style: GoogleFonts.rajdhani(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: color,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showClubGallery(BuildContext context, String clubName) {
+    final List<String> photos = List.generate(
+      10,
+      (index) => 'assets/images/sporty/Foto${index + 1}.jpeg',
+    );
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => ClubGalleryScreen(
+          clubName: clubName,
+          photos: photos,
+        ),
+      ),
+    );
+  }
+}
+
+class ClubGalleryScreen extends StatelessWidget {
+  final String clubName;
+  final List<String> photos;
+
+  const ClubGalleryScreen({
+    super.key,
+    required this.clubName,
+    required this.photos,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.darkBg,
+      appBar: AppBar(
+        backgroundColor: AppTheme.darkCard,
+        title: Text(
+          clubName,
+          style: GoogleFonts.orbitron(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: GridView.builder(
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            childAspectRatio: 1,
+          ),
+          itemCount: photos.length,
+          itemBuilder: (context, index) {
+            return GestureDetector(
+              onTap: () => _showFullScreenImage(context, photos, index),
+              child: Hero(
+                tag: 'photo_$index',
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(15),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.neonGreen.withOpacity(0.2),
+                        blurRadius: 10,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(15),
+                    child: Image.asset(
+                      photos[index],
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  void _showFullScreenImage(BuildContext context, List<String> photos, int initialIndex) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => FullScreenGallery(
+          photos: photos,
+          initialIndex: initialIndex,
+        ),
+      ),
+    );
+  }
+}
+
+class FullScreenGallery extends StatefulWidget {
+  final List<String> photos;
+  final int initialIndex;
+
+  const FullScreenGallery({
+    super.key,
+    required this.photos,
+    required this.initialIndex,
+  });
+
+  @override
+  State<FullScreenGallery> createState() => _FullScreenGalleryState();
+}
+
+class _FullScreenGalleryState extends State<FullScreenGallery> {
+  late PageController _pageController;
+  late int _currentIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        leading: IconButton(
+          icon: const Icon(Icons.close, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          '${_currentIndex + 1} / ${widget.photos.length}',
+          style: GoogleFonts.rajdhani(
+            color: Colors.white,
+            fontSize: 18,
+          ),
+        ),
+        centerTitle: true,
+      ),
+      body: PageView.builder(
+        controller: _pageController,
+        itemCount: widget.photos.length,
+        onPageChanged: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        itemBuilder: (context, index) {
+          return InteractiveViewer(
+            minScale: 0.5,
+            maxScale: 4.0,
+            child: Center(
+              child: Hero(
+                tag: 'photo_$index',
+                child: Image.asset(
+                  widget.photos[index],
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
