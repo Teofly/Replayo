@@ -24,18 +24,18 @@
                 <p>Admin Dashboard</p>
             </div>
             <nav class="nav">
-                <a href="#" class="nav-item active" data-page="overview">📊 Stato</a>
-                <a href="#" class="nav-item" data-page="bookings">📅 Prenotazioni</a>
-                <a href="#" class="nav-item" data-page="courts">🏟️ Campi</a>
+                <a href="#" class="nav-item active" data-page="bookings">📅 Prenotazioni</a>
                 <a href="#" class="nav-item" data-page="players">👤 Anagrafica</a>
+                <a href="#" class="nav-item" data-page="courts">🏟️ Campi</a>
                 <a href="#" class="nav-item" data-page="matches">📹 Videos</a>
+                <a href="#" class="nav-item" data-page="overview">📊 Stato</a>
             </nav>
         </aside>
 
         <!-- Main Content -->
         <main class="main-content">
             <header class="header">
-                <h2 id="page-title">Stato</h2>
+                <h2 id="page-title">Prenotazioni</h2>
                 <div class="header-actions">
                     <span class="api-status" id="api-status">🔴 Checking...</span>
                 </div>
@@ -130,6 +130,34 @@
                             <h3 style="margin: 0;">Statistiche Copertura</h3>
                             <button class="btn btn-secondary" onclick="loadBookingStats()">Aggiorna</button>
                         </div>
+                        <!-- Filtri Statistiche -->
+                        <div class="stats-filters" style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <label style="color: #a0a0a0; font-size: 0.9rem;">Periodo:</label>
+                                <select id="stats-period-filter" onchange="onStatsFilterChange()" style="padding: 0.5rem; border-radius: 4px; background: #1a1a2e; color: #fff; border: 1px solid #333;">
+                                    <option value="year">Anno corrente</option>
+                                    <option value="month">Mese corrente</option>
+                                    <option value="week">Ultimi 7 giorni</option>
+                                    <option value="custom">Personalizzato</option>
+                                </select>
+                            </div>
+                            <div id="stats-custom-dates" style="display: none; align-items: center; gap: 0.5rem;">
+                                <input type="date" id="stats-from-date" onchange="onStatsFilterChange()" style="padding: 0.5rem; border-radius: 4px; background: #1a1a2e; color: #fff; border: 1px solid #333;">
+                                <span style="color: #a0a0a0;">-</span>
+                                <input type="date" id="stats-to-date" onchange="onStatsFilterChange()" style="padding: 0.5rem; border-radius: 4px; background: #1a1a2e; color: #fff; border: 1px solid #333;">
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <label style="color: #a0a0a0; font-size: 0.9rem;">Sport:</label>
+                                <select id="stats-sport-filter" onchange="onStatsFilterChange()" style="padding: 0.5rem; border-radius: 4px; background: #1a1a2e; color: #fff; border: 1px solid #333;">
+                                    <option value="">Tutti</option>
+                                    <option value="padel">Padel</option>
+                                    <option value="tennis">Tennis</option>
+                                    <option value="calcetto">Calcetto</option>
+                                </select>
+                            </div>
+                        </div>
+                        <!-- Summary Cards -->
+                        <div id="stats-summary" class="stats-summary" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;"></div>
                         <div class="stats-charts-grid">
                             <div class="chart-container">
                                 <h4>Copertura per Sport</h4>

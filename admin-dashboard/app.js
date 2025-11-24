@@ -70,7 +70,7 @@ async function apiFetch(url, options = {}) {
 }
 
 // Global state
-let currentPage = 'overview';
+let currentPage = 'bookings';
 let currentMonth = new Date().getMonth();
 let currentYear = new Date().getFullYear();
 let selectedDate = null;
@@ -86,7 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupNavigation();
     setupMobileMenu();
     checkAPIStatus();
-    loadOverviewData();
+    navigateTo('bookings');
     setupForms();
     setupModals();
 });
@@ -531,7 +531,7 @@ function loadCalendarCoverage() {
     document.querySelectorAll('.day-coverage-bar').forEach(bar => bar.remove());
     document.querySelectorAll('.calendar-day.has-bookings').forEach(day => day.classList.remove('has-bookings'));
 
-    fetch(`${API_BASE_URL}/bookings?from_date=${startDate}&to_date=${endDate}`)
+    apiFetch(`${API_BASE_URL}/bookings?from_date=${startDate}&to_date=${endDate}`)
         .then(r => r.json())
         .then(data => {
             // Handle different response formats
@@ -2193,52 +2193,119 @@ function filterBySport(sport) {
 // ==========================================
 let chartSport, chartWeek, chartMonth, chartYear;
 
+function getStatsDateRange() {
+    const periodFilter = document.getElementById('stats-period-filter');
+    const period = periodFilter ? periodFilter.value : 'year';
+    const now = new Date();
+    const formatDate = (d) => d.toISOString().split('T')[0];
+
+    let fromDate, toDate;
+
+    switch (period) {
+        case 'week':
+            const weekAgo = new Date(now);
+            weekAgo.setDate(weekAgo.getDate() - 7);
+            fromDate = formatDate(weekAgo);
+            toDate = formatDate(now);
+            break;
+        case 'month':
+            fromDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+            toDate = formatDate(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+            break;
+        case 'custom':
+            fromDate = document.getElementById('stats-from-date')?.value || formatDate(new Date(now.getFullYear(), 0, 1));
+            toDate = document.getElementById('stats-to-date')?.value || formatDate(now);
+            break;
+        case 'year':
+        default:
+            fromDate = `${now.getFullYear()}-01-01`;
+            toDate = `${now.getFullYear()}-12-31`;
+            break;
+    }
+
+    return { fromDate, toDate };
+}
+
+function onStatsFilterChange() {
+    const periodFilter = document.getElementById('stats-period-filter');
+    const customDatesDiv = document.getElementById('stats-custom-dates');
+
+    if (periodFilter && customDatesDiv) {
+        customDatesDiv.style.display = periodFilter.value === 'custom' ? 'flex' : 'none';
+    }
+
+    loadBookingStats();
+}
+
 async function loadBookingStats() {
     try {
-        // Get bookings for current month
-        const now = new Date();
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-        const startOfYear = new Date(now.getFullYear(), 0, 1);
-        const endOfYear = new Date(now.getFullYear(), 11, 31);
+        const { fromDate, toDate } = getStatsDateRange();
+        const sportFilter = document.getElementById('stats-sport-filter')?.value || '';
 
-        const formatDate = (d) => d.toISOString().split('T')[0];
+        // Build URL with filters
+        let url = `${API_BASE_URL}/stats/bookings?from_date=${fromDate}&to_date=${toDate}`;
+        if (sportFilter) {
+            url += `&sport_type=${sportFilter}`;
+        }
 
-        // Fetch year bookings for all stats
-        const response = await apiFetch(`${API_BASE_URL}/bookings?from_date=${formatDate(startOfYear)}&to_date=${formatDate(endOfYear)}`);
+        const response = await apiFetch(url);
         const data = await response.json();
-        const bookings = data.bookings || [];
 
-        renderSportChart(bookings);
-        renderWeekChart(bookings);
-        renderMonthChart(bookings);
-        renderYearChart(bookings);
+        if (data.success) {
+            renderStatsSummary(data.summary);
+            renderSportChart(data.by_sport);
+            renderWeekChart(data.daily_trend);
+            renderMonthChart(data.daily_trend);
+            renderYearChart(data.monthly_trend);
+        }
     } catch (error) {
         console.error('Error loading booking stats:', error);
     }
 }
 
-function renderSportChart(bookings) {
+function renderStatsSummary(summary) {
+    const container = document.getElementById('stats-summary');
+    if (!container) return;
+
+    const formatNumber = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+
+    const bookings = formatNumber(summary.total_bookings);
+    const revenue = formatNumber(Math.round(summary.total_revenue));
+    const hours = formatNumber(summary.total_hours);
+
+    container.innerHTML = `
+        <div style="background: linear-gradient(135deg, #4CAF50, #45a049); padding: 1rem; border-radius: 8px; text-align: center;">
+            <div style="font-size: 1.8rem; font-weight: bold;">${bookings}</div>
+            <div style="font-size: 0.85rem; opacity: 0.9;">Prenotazioni</div>
+        </div>
+        <div style="background: linear-gradient(135deg, #FF9800, #f57c00); padding: 1rem; border-radius: 8px; text-align: center;">
+            <div style="font-size: 1.8rem; font-weight: bold;">${revenue}€</div>
+            <div style="font-size: 0.85rem; opacity: 0.9;">Incasso</div>
+        </div>
+        <div style="background: linear-gradient(135deg, #2196F3, #1976d2); padding: 1rem; border-radius: 8px; text-align: center;">
+            <div style="font-size: 1.8rem; font-weight: bold;">${hours}</div>
+            <div style="font-size: 0.85rem; opacity: 0.9;">Ore giocate</div>
+        </div>
+    `;
+}
+
+function renderSportChart(bySport) {
     const ctx = document.getElementById('chart-sport');
     if (!ctx) return;
 
-    // Count by sport
-    const sportCounts = { padel: 0, tennis: 0, calcetto: 0 };
-    bookings.forEach(b => {
-        const court = courtsCache.find(c => c.id === b.court_id);
-        if (court && sportCounts[court.sport_type] !== undefined) {
-            sportCounts[court.sport_type]++;
-        }
-    });
+    const sportColors = { padel: '#4CAF50', tennis: '#FF9800', calcetto: '#2196F3' };
+    const labels = bySport.map(s => s.sport_type.charAt(0).toUpperCase() + s.sport_type.slice(1));
+    const data = bySport.map(s => s.count);
+    const colors = bySport.map(s => sportColors[s.sport_type] || '#999');
 
     if (chartSport) chartSport.destroy();
     chartSport = new Chart(ctx, {
         type: 'doughnut',
         data: {
-            labels: ['Padel', 'Tennis', 'Calcetto'],
+            labels: labels,
             datasets: [{
-                data: [sportCounts.padel, sportCounts.tennis, sportCounts.calcetto],
-                backgroundColor: ['#4CAF50', '#FF9800', '#2196F3'],
+                data: data,
+                backgroundColor: colors,
                 borderWidth: 0
             }]
         },
@@ -2251,20 +2318,17 @@ function renderSportChart(bookings) {
     });
 }
 
-function renderWeekChart(bookings) {
+function renderWeekChart(dailyTrend) {
     const ctx = document.getElementById('chart-week');
     if (!ctx) return;
 
-    // Last 7 days
-    const days = [];
-    const counts = [];
-    for (let i = 6; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        const dateStr = d.toISOString().split('T')[0];
-        days.push(d.toLocaleDateString('it-IT', { weekday: 'short' }));
-        counts.push(bookings.filter(b => b.booking_date?.split('T')[0] === dateStr).length);
-    }
+    // Get last 7 days from daily trend
+    const last7 = dailyTrend.slice(-7);
+    const days = last7.map(d => {
+        const date = new Date(d.date);
+        return date.toLocaleDateString('it-IT', { weekday: 'short' });
+    });
+    const counts = last7.map(d => d.count);
 
     if (chartWeek) chartWeek.destroy();
     chartWeek = new Chart(ctx, {
@@ -2289,21 +2353,22 @@ function renderWeekChart(bookings) {
     });
 }
 
-function renderMonthChart(bookings) {
+function renderMonthChart(dailyTrend) {
     const ctx = document.getElementById('chart-month');
     if (!ctx) return;
 
-    // Current month by day
+    // Get current month data
     const now = new Date();
-    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    const days = [];
-    const counts = [];
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
 
-    for (let i = 1; i <= daysInMonth; i++) {
-        const dateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
-        days.push(i);
-        counts.push(bookings.filter(b => b.booking_date?.split('T')[0] === dateStr).length);
-    }
+    const monthData = dailyTrend.filter(d => {
+        const date = new Date(d.date);
+        return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+    });
+
+    const days = monthData.map(d => new Date(d.date).getDate());
+    const counts = monthData.map(d => d.count);
 
     if (chartMonth) chartMonth.destroy();
     chartMonth = new Chart(ctx, {
@@ -2330,27 +2395,24 @@ function renderMonthChart(bookings) {
     });
 }
 
-function renderYearChart(bookings) {
+function renderYearChart(monthlyTrend) {
     const ctx = document.getElementById('chart-year');
     if (!ctx) return;
 
-    // Monthly totals
-    const months = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
-    const now = new Date();
+    const monthNames = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
     const counts = Array(12).fill(0);
 
-    bookings.forEach(b => {
-        if (b.booking_date) {
-            const month = parseInt(b.booking_date.split('-')[1]) - 1;
-            counts[month]++;
-        }
+    monthlyTrend.forEach(m => {
+        const date = new Date(m.month);
+        const monthIndex = date.getMonth();
+        counts[monthIndex] = m.count;
     });
 
     if (chartYear) chartYear.destroy();
     chartYear = new Chart(ctx, {
         type: 'bar',
         data: {
-            labels: months,
+            labels: monthNames,
             datasets: [{
                 label: 'Prenotazioni',
                 data: counts,

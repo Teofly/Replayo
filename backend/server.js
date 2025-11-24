@@ -1039,6 +1039,160 @@ app.get('/api/stats/storage', async (req, res) => {
   }
 });
 
+// GET /api/stats/bookings - Statistiche prenotazioni con filtri
+app.get('/api/stats/bookings', async (req, res) => {
+  try {
+    const { from_date, to_date, sport_type, period } = req.query;
+
+    // Build base query with filters
+    let whereClause = "WHERE b.status != 'cancelled'";
+    const params = [];
+
+    if (from_date) {
+      params.push(from_date);
+      whereClause += ' AND b.booking_date >= $' + params.length;
+    }
+    if (to_date) {
+      params.push(to_date);
+      whereClause += ' AND b.booking_date <= $' + params.length;
+    }
+    if (sport_type) {
+      params.push(sport_type);
+      whereClause += ' AND c.sport_type = $' + params.length;
+    }
+
+    // Total bookings count
+    const totalResult = await pool.query(`
+      SELECT COUNT(*) as total,
+             SUM(b.total_price) as revenue,
+             SUM(b.duration_minutes) as total_minutes
+      FROM bookings b
+      JOIN courts c ON b.court_id = c.id
+      ${whereClause}
+    `, params);
+
+    // Bookings by sport type
+    const bySportResult = await pool.query(`
+      SELECT c.sport_type, COUNT(*) as count, SUM(b.total_price) as revenue
+      FROM bookings b
+      JOIN courts c ON b.court_id = c.id
+      ${whereClause}
+      GROUP BY c.sport_type
+      ORDER BY count DESC
+    `, params);
+
+    // Bookings by status
+    const byStatusResult = await pool.query(`
+      SELECT b.status, COUNT(*) as count
+      FROM bookings b
+      JOIN courts c ON b.court_id = c.id
+      ${whereClause.replace("b.status != 'cancelled'", "1=1")}
+      GROUP BY b.status
+    `, params);
+
+    // Bookings by day of week
+    const byDayResult = await pool.query(`
+      SELECT EXTRACT(DOW FROM b.booking_date) as day_of_week, COUNT(*) as count
+      FROM bookings b
+      JOIN courts c ON b.court_id = c.id
+      ${whereClause}
+      GROUP BY EXTRACT(DOW FROM b.booking_date)
+      ORDER BY day_of_week
+    `, params);
+
+    // Bookings by hour
+    const byHourResult = await pool.query(`
+      SELECT EXTRACT(HOUR FROM b.start_time::time) as hour, COUNT(*) as count
+      FROM bookings b
+      JOIN courts c ON b.court_id = c.id
+      ${whereClause}
+      GROUP BY EXTRACT(HOUR FROM b.start_time::time)
+      ORDER BY hour
+    `, params);
+
+    // Daily trend (last 30 days or custom range)
+    const dailyResult = await pool.query(`
+      SELECT b.booking_date::date as date, COUNT(*) as count, SUM(b.total_price) as revenue
+      FROM bookings b
+      JOIN courts c ON b.court_id = c.id
+      ${whereClause}
+      GROUP BY b.booking_date::date
+      ORDER BY date
+    `, params);
+
+    // Monthly trend
+    const monthlyResult = await pool.query(`
+      SELECT DATE_TRUNC('month', b.booking_date) as month, COUNT(*) as count, SUM(b.total_price) as revenue
+      FROM bookings b
+      JOIN courts c ON b.court_id = c.id
+      ${whereClause}
+      GROUP BY DATE_TRUNC('month', b.booking_date)
+      ORDER BY month
+    `, params);
+
+    // Top courts
+    const topCourtsResult = await pool.query(`
+      SELECT c.id, c.name, c.sport_type, COUNT(*) as bookings_count, SUM(b.total_price) as revenue
+      FROM bookings b
+      JOIN courts c ON b.court_id = c.id
+      ${whereClause}
+      GROUP BY c.id, c.name, c.sport_type
+      ORDER BY bookings_count DESC
+      LIMIT 10
+    `, params);
+
+    const dayNames = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
+
+    res.json({
+      success: true,
+      filters: { from_date, to_date, sport_type },
+      summary: {
+        total_bookings: parseInt(totalResult.rows[0]?.total || 0),
+        total_revenue: parseFloat(totalResult.rows[0]?.revenue || 0),
+        total_hours: Math.round((parseInt(totalResult.rows[0]?.total_minutes || 0)) / 60)
+      },
+      by_sport: bySportResult.rows.map(r => ({
+        sport_type: r.sport_type,
+        count: parseInt(r.count),
+        revenue: parseFloat(r.revenue || 0)
+      })),
+      by_status: byStatusResult.rows.map(r => ({
+        status: r.status,
+        count: parseInt(r.count)
+      })),
+      by_day_of_week: byDayResult.rows.map(r => ({
+        day: dayNames[parseInt(r.day_of_week)],
+        day_number: parseInt(r.day_of_week),
+        count: parseInt(r.count)
+      })),
+      by_hour: byHourResult.rows.map(r => ({
+        hour: parseInt(r.hour),
+        count: parseInt(r.count)
+      })),
+      daily_trend: dailyResult.rows.map(r => ({
+        date: r.date,
+        count: parseInt(r.count),
+        revenue: parseFloat(r.revenue || 0)
+      })),
+      monthly_trend: monthlyResult.rows.map(r => ({
+        month: r.month,
+        count: parseInt(r.count),
+        revenue: parseFloat(r.revenue || 0)
+      })),
+      top_courts: topCourtsResult.rows.map(r => ({
+        id: r.id,
+        name: r.name,
+        sport_type: r.sport_type,
+        bookings_count: parseInt(r.bookings_count),
+        revenue: parseFloat(r.revenue || 0)
+      }))
+    });
+  } catch (error) {
+    console.error('Error fetching booking stats:', error);
+    res.status(500).json({ error: 'Errore nel recupero delle statistiche' });
+  }
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`🚀 RePlayo API server running on http://localhost:${PORT}`);
@@ -1242,15 +1396,15 @@ app.get('/api/bookings/available-slots', async (req, res) => {
 // GET /api/bookings - Lista prenotazioni
 app.get('/api/bookings', async (req, res) => {
   try {
-    const { date, court_id, status, from_date, to_date } = req.query;
-    
+    const { date, court_id, status, from_date, to_date, sport_type } = req.query;
+
     let query = `
-      SELECT b.*, c.name as court_name, c.sport_type 
-      FROM bookings b 
-      JOIN courts c ON b.court_id = c.id 
+      SELECT b.*, c.name as court_name, c.sport_type
+      FROM bookings b
+      JOIN courts c ON b.court_id = c.id
       WHERE 1=1`;
     const params = [];
-    
+
     if (date) {
       params.push(date);
       query += ' AND b.booking_date = $' + params.length;
@@ -1271,9 +1425,13 @@ app.get('/api/bookings', async (req, res) => {
       params.push(status);
       query += ' AND b.status = $' + params.length;
     }
-    
+    if (sport_type) {
+      params.push(sport_type);
+      query += ' AND c.sport_type = $' + params.length;
+    }
+
     query += ' ORDER BY b.booking_date, b.start_time';
-    
+
     const result = await pool.query(query, params);
     res.json({ success: true, bookings: result.rows });
   } catch (error) {
