@@ -2,6 +2,7 @@ enum SportType {
   padel,
   tennis,
   soccer,
+  calcetto,
 }
 
 class Match {
@@ -35,6 +36,7 @@ class Match {
       bookingCode: map['booking_code'] as String,
       sportType: SportType.values.firstWhere(
         (e) => e.name == map['sport_type'],
+        orElse: () => SportType.soccer,
       ),
       matchDate: DateTime.parse(map['match_date'] as String),
       location: map['location'] as String,

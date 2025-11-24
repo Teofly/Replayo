@@ -6,6 +6,7 @@
     <title>RePlayo Admin Dashboard</title>
     <link rel="icon" type="image/png" href="replayo-logo.png">
     <link rel="stylesheet" href="style.css?v=20251122b">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <!-- Hamburger Button for Mobile -->
@@ -43,6 +44,13 @@
             <div class="content">
                 <!-- Stato Page -->
                 <div id="page-overview" class="page active">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+                        <h3 style="margin: 0;">Statistiche NAS</h3>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button class="btn btn-secondary" onclick="refreshNasStats()">Aggiorna</button>
+                            <button class="btn btn-danger" onclick="cleanupOrphanedVideos()">Pulisci Video Orfani</button>
+                        </div>
+                    </div>
                     <div class="stats-grid">
                         <div class="stat-card">
                             <div class="stat-icon">📹</div>
@@ -91,7 +99,10 @@
                                 <div class="calendar-nav">
                                     <button id="prev-month">&lt; Mese Prec</button>
                                     <button id="next-month">Mese Succ &gt;</button>
-                                    <input type="date" id="date-picker" class="date-picker-btn" title="Vai a data">
+                                    <label class="date-picker-btn" title="Vai a data">
+                                        📅
+                                        <input type="date" id="date-picker" style="position: absolute; opacity: 0; width: 100%; height: 100%; top: 0; left: 0; cursor: pointer;">
+                                    </label>
                                     <button id="today-btn">Oggi</button>
                                 </div>
                                 <h4 id="calendar-month-year">Novembre 2025</h4>
@@ -111,6 +122,32 @@
                             </div>
                         </div>
                         <div id="daily-bookings-timeline" class="timeline-container"></div>
+                    </div>
+
+                    <!-- Statistiche Copertura -->
+                    <div class="section">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                            <h3 style="margin: 0;">Statistiche Copertura</h3>
+                            <button class="btn btn-secondary" onclick="loadBookingStats()">Aggiorna</button>
+                        </div>
+                        <div class="stats-charts-grid">
+                            <div class="chart-container">
+                                <h4>Copertura per Sport</h4>
+                                <canvas id="chart-sport"></canvas>
+                            </div>
+                            <div class="chart-container">
+                                <h4>Prenotazioni Settimana</h4>
+                                <canvas id="chart-week"></canvas>
+                            </div>
+                            <div class="chart-container">
+                                <h4>Prenotazioni Mese</h4>
+                                <canvas id="chart-month"></canvas>
+                            </div>
+                            <div class="chart-container">
+                                <h4>Trend Annuale</h4>
+                                <canvas id="chart-year"></canvas>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -141,42 +178,7 @@
 
                 <!-- Matches Page -->
                 <div id="page-matches" class="page">
-                        <h3>Create New Match</h3>
-                        <form id="create-match-form" class="form">
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label>Codice Prenotazione</label>
-                                    <input type="text" id="booking-code" placeholder="PADEL2024" required>
-                                </div>
-                                <div class="form-group">
-                                    <label>Sport Type</label>
-                                    <select id="sport-type" required>
-                                        <option value="padel">Padel</option>
-                                        <option value="tennis">Tennis</option>
-                                        <option value="soccer">Soccer</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label>Location</label>
-                                    <input type="text" id="location" placeholder="Centro Sportivo Milano" required>
-                                </div>
-                                <div class="form-group">
-                                    <label>Match Date</label>
-                                    <input type="datetime-local" id="match-date" required>
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label>Players (comma separated)</label>
-                                <input type="text" id="players" placeholder="Mario Rossi, Luigi Verdi, Giovanni Bianchi, Paolo Neri" required>
-                            </div>
-                            <button type="submit" class="btn btn-primary">Create Match</button>
-                        </form>
-                        <div id="match-result" class="result"></div>
-                
-                
-                    <div id="search-matches-section" class="section" style="margin-top: 2rem;">
+                    <div id="search-matches-section" class="section">
                         <h3>Cerca Partite</h3>
                         <form id="search-matches-form" class="form">
                             <div class="form-row">
@@ -322,6 +324,22 @@
                 </div>
                 <div class="form-row">
                     <div class="form-group">
+                        <label>Durata</label>
+                        <select id="booking-duration">
+                            <option value="0">Default campo</option>
+                            <option value="30">30 minuti</option>
+                            <option value="60">60 minuti</option>
+                            <option value="90">90 minuti</option>
+                            <option value="120">120 minuti</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Numero Giocatori</label>
+                        <input type="number" id="booking-num-players" min="1" max="14" value="4">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
                         <label>Nome Riferimento</label>
                         <input type="text" id="booking-customer-name" required placeholder="Nome cliente">
                     </div>
@@ -334,10 +352,6 @@
                     <div class="form-group">
                         <label>Telefono</label>
                         <input type="tel" id="booking-customer-phone" placeholder="+39 333 1234567">
-                    </div>
-                    <div class="form-group">
-                        <label>Numero Giocatori</label>
-                        <input type="number" id="booking-num-players" min="1" max="14" value="4">
                     </div>
                 </div>
                 <div class="form-group">
@@ -353,7 +367,7 @@
                 </div>
                 <div style="display: flex; gap: 1rem;">
                     <button type="submit" class="btn btn-primary" id="booking-submit-btn">Crea Prenotazione</button>
-                    <button type="button" class="btn btn-secondary" id="cancel-booking">Annulla</button>
+                    <button type="button" class="btn btn-secondary" id="cancel-booking" onclick="document.getElementById('booking-modal').style.display='none'">Annulla</button>
                 </div>
             </form>
         </div>
@@ -402,7 +416,7 @@
                 </div>
                 <div style="display: flex; gap: 1rem;">
                     <button type="submit" class="btn btn-primary">Salva</button>
-                    <button type="button" class="btn btn-secondary" id="cancel-court">Annulla</button>
+                    <button type="button" class="btn btn-secondary" id="cancel-court" onclick="document.getElementById('court-modal').style.display='none'">Annulla</button>
                 </div>
             </form>
         </div>
@@ -440,7 +454,7 @@
                 </div>
                 <div style="display: flex; gap: 1rem;">
                     <button type="submit" class="btn btn-primary">Salva</button>
-                    <button type="button" class="btn btn-secondary" id="cancel-player">Annulla</button>
+                    <button type="button" class="btn btn-secondary" id="cancel-player" onclick="document.getElementById('player-modal').style.display='none'">Annulla</button>
                 </div>
             </form>
         </div>
@@ -477,6 +491,28 @@
                     Chiudi
                 </button>
             </div>
+        </div>
+    </div>
+
+    <!-- Login Modal -->
+    <div id="login-modal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 400px;">
+            <div style="text-align: center; margin-bottom: 1.5rem;">
+                <img src="replayo-logo.png" alt="RePlayo" style="width: 80px; margin-bottom: 1rem;">
+                <h3 style="margin: 0;">Accesso Admin</h3>
+            </div>
+            <form id="login-form" class="form">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="login-username" required placeholder="Username" autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="login-password" required placeholder="Password" autocomplete="current-password">
+                </div>
+                <div id="login-error" style="color: var(--danger); margin-bottom: 1rem; display: none;"></div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Accedi</button>
+            </form>
         </div>
     </div>
 

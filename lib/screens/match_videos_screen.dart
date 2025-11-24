@@ -57,6 +57,8 @@ class _MatchVideosScreenState extends State<MatchVideosScreen>
         return '🎾';
       case SportType.soccer:
         return '⚽';
+      case SportType.calcetto:
+        return '⚽';
     }
   }
 

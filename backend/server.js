@@ -33,6 +33,46 @@ const S3_BUCKET = process.env.S3_BUCKET || 'replayo-videos';
 app.use(cors());
 app.use(express.json());
 
+// Basic Auth middleware
+const ADMIN_USER = process.env.ADMIN_USER || 'demo';
+const ADMIN_PASS = process.env.ADMIN_PASS || 'demo';
+
+function basicAuth(req, res, next) {
+  // Skip auth for health check and all user-facing endpoints
+  const publicPaths = [
+    '/health',
+    '/matches/access/',
+    '/matches/verify',
+    '/videos/match/',
+  ];
+  // Also allow video streaming and download endpoints
+  if (publicPaths.some(p => req.path.startsWith(p)) ||
+      req.path.match(/\/videos\/[^/]+\/stream/) ||
+      req.path.match(/\/videos\/[^/]+\/download/)) {
+    return next();
+  }
+
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Basic ')) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="RePlayo Admin"');
+    return res.status(401).json({ error: 'Autenticazione richiesta' });
+  }
+
+  const base64Credentials = authHeader.split(' ')[1];
+  const credentials = Buffer.from(base64Credentials, 'base64').toString('utf8');
+  const [username, password] = credentials.split(':');
+
+  if (username === ADMIN_USER && password === ADMIN_PASS) {
+    next();
+  } else {
+    res.setHeader('WWW-Authenticate', 'Basic realm="RePlayo Admin"');
+    return res.status(401).json({ error: 'Credenziali non valide' });
+  }
+}
+
+// Apply auth to all /api routes
+app.use('/api', basicAuth);
+
 // PostgreSQL Pool
 const pool = new Pool({
   host: process.env.DB_HOST || '192.168.1.175',
@@ -567,11 +607,26 @@ app.get('/api/videos/:videoId/stream', async (req, res) => {
   try {
     const { videoId } = req.params;
 
-    // Get video info
-    const result = await pool.query(
-      'SELECT file_path, title FROM videos WHERE id = $1',
-      [videoId]
-    );
+    // Check if videoId is a valid UUID or a booking_code
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let result;
+
+    if (uuidRegex.test(videoId)) {
+      // It's a UUID - search directly by video id
+      result = await pool.query(
+        'SELECT file_path, title FROM videos WHERE id = $1',
+        [videoId]
+      );
+    } else {
+      // It's a booking_code - find the match and get first video
+      result = await pool.query(
+        `SELECT v.file_path, v.title FROM videos v
+         JOIN matches m ON v.match_id = m.id
+         WHERE m.booking_code = $1
+         ORDER BY v.created_at ASC LIMIT 1`,
+        [videoId]
+      );
+    }
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Video non trovato' });
@@ -627,11 +682,30 @@ app.get('/api/videos/:videoId/download', async (req, res) => {
   try {
     const { videoId } = req.params;
 
-    // Get video info
-    const result = await pool.query(
-      'SELECT file_path, title FROM videos WHERE id = $1',
-      [videoId]
-    );
+    // Check if videoId is a valid UUID or a booking_code
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let result;
+    let actualVideoId = videoId;
+
+    if (uuidRegex.test(videoId)) {
+      // It's a UUID - search directly by video id
+      result = await pool.query(
+        'SELECT id, file_path, title FROM videos WHERE id = $1',
+        [videoId]
+      );
+    } else {
+      // It's a booking_code - find the match and get first video
+      result = await pool.query(
+        `SELECT v.id, v.file_path, v.title FROM videos v
+         JOIN matches m ON v.match_id = m.id
+         WHERE m.booking_code = $1
+         ORDER BY v.created_at ASC LIMIT 1`,
+        [videoId]
+      );
+      if (result.rows.length > 0) {
+        actualVideoId = result.rows[0].id;
+      }
+    }
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Video non trovato' });
@@ -643,7 +717,7 @@ app.get('/api/videos/:videoId/download', async (req, res) => {
     // Increment download count
     await pool.query(
       'UPDATE videos SET download_count = download_count + 1 WHERE id = $1',
-      [videoId]
+      [actualVideoId]
     );
 
     if (STORAGE_TYPE === 's3') {
@@ -826,6 +900,86 @@ app.put('/api/matches/:matchId', async (req, res) => {
     }
 });
 
+// POST /api/videos/cleanup - Remove orphaned video records (files deleted from NAS)
+app.post('/api/videos/cleanup', async (req, res) => {
+    try {
+        // Get all video records
+        const result = await pool.query('SELECT id, file_path, title FROM videos');
+        const videos = result.rows;
+
+        let deleted = 0;
+        let kept = 0;
+        const deletedVideos = [];
+
+        for (const video of videos) {
+            const filePath = video.file_path;
+            let fileExists = false;
+
+            if (STORAGE_TYPE === 'local' && filePath) {
+                // Check if file exists on local storage
+                const fullPath = path.join(LOCAL_STORAGE_PATH, filePath);
+                try {
+                    fsSync.accessSync(fullPath);
+                    fileExists = true;
+                } catch (e) {
+                    fileExists = false;
+                }
+            }
+
+            if (!fileExists) {
+                // Delete orphaned record
+                await pool.query('DELETE FROM videos WHERE id = $1', [video.id]);
+                deleted++;
+                deletedVideos.push({ id: video.id, title: video.title, path: video.file_path });
+            } else {
+                kept++;
+            }
+        }
+
+        res.json({
+            success: true,
+            message: `Cleanup completed: ${deleted} orphaned records deleted, ${kept} valid records kept`,
+            deleted,
+            kept,
+            deletedVideos
+        });
+    } catch (error) {
+        console.error('Error cleaning up videos:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// Helper function to scan NAS directory
+function scanNasStorage(dirPath) {
+  let totalSize = 0;
+  let videoCount = 0;
+  const videoExtensions = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v', '.mpeg', '.mpg'];
+
+  const scanDir = (dir) => {
+    try {
+      const files = fsSync.readdirSync(dir);
+      for (const file of files) {
+        const filePath = path.join(dir, file);
+        const stat = fsSync.statSync(filePath);
+        if (stat.isDirectory()) {
+          scanDir(filePath);
+        } else {
+          totalSize += stat.size;
+          const ext = path.extname(file).toLowerCase();
+          if (videoExtensions.includes(ext)) {
+            videoCount++;
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Error scanning:', dir, e.message);
+    }
+  };
+
+  scanDir(dirPath);
+  return { totalSize, videoCount };
+}
+
 app.get('/api/stats/storage', async (req, res) => {
   try {
     // Get stats from database
@@ -839,38 +993,23 @@ app.get('/api/stats/storage', async (req, res) => {
     `);
     const stats = result.rows[0];
 
-    // Calculate actual NAS storage
-    let nasStorageBytes = 0;
-    const getDirectorySize = (dirPath) => {
-      let total = 0;
-      try {
-        const files = fsSync.readdirSync(dirPath);
-        for (const file of files) {
-          const filePath = path.join(dirPath, file);
-          const stat = fsSync.statSync(filePath);
-          if (stat.isDirectory()) {
-            total += getDirectorySize(filePath);
-          } else {
-            total += stat.size;
-          }
-        }
-      } catch (e) {}
-      return total;
-    };
-
+    // Scan NAS for actual file count and size
+    let nasStats = { totalSize: 0, videoCount: 0 };
     if (STORAGE_TYPE === 'local' && LOCAL_STORAGE_PATH) {
-      nasStorageBytes = getDirectorySize(LOCAL_STORAGE_PATH);
+      nasStats = scanNasStorage(LOCAL_STORAGE_PATH);
     }
 
     res.json({
-      totalVideos: parseInt(stats.total_videos) || 0,
-      totalSize: nasStorageBytes || parseInt(stats.total_size || 0),
-      totalSizeBytes: nasStorageBytes || parseInt(stats.total_size || 0),
-      totalSizeGB: ((nasStorageBytes || parseInt(stats.total_size || 0)) / 1024 / 1024 / 1024).toFixed(2),
+      totalVideos: nasStats.videoCount || parseInt(stats.total_videos) || 0,
+      totalSize: nasStats.totalSize || parseInt(stats.total_size || 0),
+      totalSizeBytes: nasStats.totalSize || parseInt(stats.total_size || 0),
+      totalSizeGB: ((nasStats.totalSize || parseInt(stats.total_size || 0)) / 1024 / 1024 / 1024).toFixed(2),
       totalViews: parseInt(stats.total_views || 0),
       totalDownloads: parseInt(stats.total_downloads || 0),
       storageType: STORAGE_TYPE,
-      storagePath: LOCAL_STORAGE_PATH
+      storagePath: LOCAL_STORAGE_PATH,
+      nasVideoCount: nasStats.videoCount,
+      dbVideoCount: parseInt(stats.total_videos) || 0
     });
   } catch (error) {
     console.error('Error:', error);
@@ -1002,75 +1141,67 @@ app.get('/api/opening-hours', async (req, res) => {
 app.get('/api/bookings/available-slots', async (req, res) => {
   try {
     const { court_id, date } = req.query;
-    
+
     if (!court_id || !date) {
       return res.status(400).json({ error: 'court_id e date sono obbligatori' });
     }
-    
+
     // Prendi info campo
     const courtResult = await pool.query('SELECT * FROM courts WHERE id = $1', [court_id]);
     if (courtResult.rows.length === 0) {
       return res.status(404).json({ error: 'Campo non trovato' });
     }
     const court = courtResult.rows[0];
-    
+
     // Prendi giorno della settimana
     const dateObj = new Date(date);
     const dayOfWeek = dateObj.getDay();
-    
+
     // Prendi orari apertura
     const hoursResult = await pool.query(
       'SELECT * FROM opening_hours WHERE day_of_week = $1 AND is_active = true',
       [dayOfWeek]
     );
-    
+
     if (hoursResult.rows.length === 0) {
       return res.json({ slots: [], message: 'Chiuso in questo giorno' });
     }
-    
+
     const openHours = hoursResult.rows[0];
-    
+
     // Prendi prenotazioni esistenti per quella data e campo
     const bookingsResult = await pool.query(
-      `SELECT start_time, end_time FROM bookings 
+      `SELECT start_time, end_time FROM bookings
        WHERE court_id = $1 AND booking_date = $2 AND status NOT IN ('cancelled')`,
       [court_id, date]
     );
-    
+
     const existingBookings = bookingsResult.rows;
-    
-    // Genera slot disponibili
+
+    // Genera slot ogni 30 minuti (base fissa)
     const slots = [];
-    const slotDuration = court.default_duration_minutes;
+    const slotInterval = 30; // Slot ogni 30 minuti
     let currentTime = new Date(`2000-01-01T${openHours.open_time}`);
     const closeTime = new Date(`2000-01-01T${openHours.close_time}`);
-    
+
     while (currentTime < closeTime) {
       const slotStart = currentTime.toTimeString().slice(0, 5);
-      const slotEnd = new Date(currentTime.getTime() + slotDuration * 60000).toTimeString().slice(0, 5);
-      
-      // Verifica se slot finisce prima della chiusura
-      if (new Date(`2000-01-01T${slotEnd}`) > closeTime) break;
-      
-      // Verifica se slot è libero
+
+      // Verifica se questo slot di partenza è già occupato
       const isBooked = existingBookings.some(b => {
         const bookStart = b.start_time.slice(0, 5);
         const bookEnd = b.end_time.slice(0, 5);
-        return (slotStart >= bookStart && slotStart < bookEnd) || 
-               (slotEnd > bookStart && slotEnd <= bookEnd) ||
-               (slotStart <= bookStart && slotEnd >= bookEnd);
+        // Lo slot è occupato se cade dentro una prenotazione esistente
+        return slotStart >= bookStart && slotStart < bookEnd;
       });
-      
+
       slots.push({
         start_time: slotStart,
-        end_time: slotEnd,
-        duration_minutes: slotDuration,
-        is_available: !isBooked,
-        price: parseFloat(court.price_per_hour) * (slotDuration / 60)
+        is_available: !isBooked
       });
-      
+
       // Prossimo slot (ogni 30 minuti)
-      currentTime = new Date(currentTime.getTime() + 30 * 60000);
+      currentTime = new Date(currentTime.getTime() + slotInterval * 60000);
     }
     
     res.json({ 

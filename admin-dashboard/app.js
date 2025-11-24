@@ -4,6 +4,71 @@ const isLocal = window.location.hostname === 'localhost' ||
                 window.location.hostname.startsWith('192.168.');
 const API_BASE_URL = isLocal ? 'http://192.168.1.175:3000/api' : 'https://api.teofly.it/api';
 
+// Auth credentials
+let authCredentials = localStorage.getItem('replayo_auth') || null;
+let loginResolve = null;
+
+function getAuthHeader() {
+    return authCredentials ? { 'Authorization': `Basic ${authCredentials}` } : {};
+}
+
+function showLoginModal() {
+    return new Promise((resolve) => {
+        loginResolve = resolve;
+        document.getElementById('login-error').style.display = 'none';
+        document.getElementById('login-form').reset();
+        document.getElementById('login-modal').style.display = 'flex';
+        document.getElementById('login-username').focus();
+    });
+}
+
+function hideLoginModal() {
+    document.getElementById('login-modal').style.display = 'none';
+}
+
+function setupLoginForm() {
+    document.getElementById('login-form')?.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const user = document.getElementById('login-username').value;
+        const pass = document.getElementById('login-password').value;
+
+        if (user && pass) {
+            authCredentials = btoa(`${user}:${pass}`);
+            localStorage.setItem('replayo_auth', authCredentials);
+            hideLoginModal();
+            if (loginResolve) {
+                loginResolve(true);
+                loginResolve = null;
+            }
+        }
+    });
+}
+
+// Helper function for authenticated API calls
+async function apiFetch(url, options = {}) {
+    // If no credentials, show login first
+    if (!authCredentials) {
+        await showLoginModal();
+    }
+
+    const headers = {
+        ...options.headers,
+        ...getAuthHeader()
+    };
+    const response = await fetch(url, { ...options, headers });
+
+    if (response.status === 401) {
+        authCredentials = null;
+        localStorage.removeItem('replayo_auth');
+        document.getElementById('login-error').textContent = 'Credenziali non valide';
+        document.getElementById('login-error').style.display = 'block';
+        await showLoginModal();
+        // Retry the request with new credentials
+        return apiFetch(url, options);
+    }
+    return response;
+}
+
 // Global state
 let currentPage = 'overview';
 let currentMonth = new Date().getMonth();
@@ -17,6 +82,7 @@ let currentSportFilter = null; // Sport filter for timeline
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', () => {
+    setupLoginForm();
     setupNavigation();
     setupMobileMenu();
     checkAPIStatus();
@@ -119,7 +185,7 @@ async function checkAPIStatus() {
     const statusEl = document.getElementById("api-status");
     const envStatusEl = document.getElementById("env-status");
     try {
-        const response = await fetch(`${API_BASE_URL}/status/environment`);
+        const response = await apiFetch(`${API_BASE_URL}/status/environment`);
         const data = await response.json();
         if (data.success && data.status) {
             const s = data.status;
@@ -152,7 +218,7 @@ async function checkAPIStatus() {
 }
 async function loadOverviewData() {
     try {
-        const response = await fetch(`${API_BASE_URL}/stats/storage`);
+        const response = await apiFetch(`${API_BASE_URL}/stats/storage`);
         const data = await response.json();
 
         document.getElementById('total-videos').textContent = data.totalVideos || '0';
@@ -164,12 +230,50 @@ async function loadOverviewData() {
     }
 }
 
+async function refreshNasStats() {
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/stats/storage`);
+        const data = await response.json();
+
+        document.getElementById('total-videos').textContent = data.totalVideos || '0';
+        document.getElementById('total-storage').textContent = formatBytes(data.totalSize || 0);
+        document.getElementById('total-views').textContent = data.totalViews || '0';
+        document.getElementById('total-downloads').textContent = data.totalDownloads || '0';
+    } catch (error) {
+        console.error('Error refreshing stats:', error);
+    }
+}
+
+async function cleanupOrphanedVideos() {
+    if (!confirm('Vuoi eliminare dal database i record dei video che non esistono più sul NAS?')) {
+        return;
+    }
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/videos/cleanup`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            alert(`Cleanup completato!\n\nEliminati: ${data.deleted} record orfani\nMantenuti: ${data.kept} record validi`);
+            refreshNasStats();
+        } else {
+            alert('Errore: ' + data.message);
+        }
+    } catch (error) {
+        console.error('Error cleaning up videos:', error);
+        alert('Errore durante il cleanup');
+    }
+}
+
 // ==========================================
 // COURTS MANAGEMENT
 // ==========================================
 async function loadCourts() {
     try {
-        const response = await fetch(`${API_BASE_URL}/courts`);
+        const response = await apiFetch(`${API_BASE_URL}/courts`);
         const data = await response.json();
         console.log('Courts API response:', data);
 
@@ -276,7 +380,7 @@ async function deleteCourt(courtId, courtName) {
     if (!confirm(`Eliminare il campo "${courtName}"?`)) return;
 
     try {
-        const response = await fetch(`${API_BASE_URL}/courts/${courtId}`, {
+        const response = await apiFetch(`${API_BASE_URL}/courts/${courtId}`, {
             method: 'DELETE'
         });
         if (response.ok) {
@@ -296,7 +400,7 @@ async function loadPlayers(search = '') {
         const url = search
             ? `${API_BASE_URL}/players/search?q=${encodeURIComponent(search)}`
             : `${API_BASE_URL}/players`;
-        const response = await fetch(url);
+        const response = await apiFetch(url);
         const data = await response.json();
         playersCache = data.players || data || [];
         renderPlayersList();
@@ -349,7 +453,7 @@ async function deletePlayer(playerId, playerName) {
     if (!confirm(`Eliminare "${playerName}" dall'anagrafica?`)) return;
 
     try {
-        const response = await fetch(`${API_BASE_URL}/players/${playerId}`, {
+        const response = await apiFetch(`${API_BASE_URL}/players/${playerId}`, {
             method: 'DELETE'
         });
         if (response.ok) {
@@ -482,7 +586,7 @@ async function loadMonthBookings() {
         const startDate = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
         const endDate = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-31`;
 
-        const response = await fetch(`${API_BASE_URL}/bookings?from_date=${startDate}&to_date=${endDate}`);
+        const response = await apiFetch(`${API_BASE_URL}/bookings?from_date=${startDate}&to_date=${endDate}`);
         const data = await response.json();
         bookingsCache = data.bookings || data || [];
 
@@ -582,7 +686,7 @@ async function renderDailyTimeline(dateStr) {
 
     // Reload bookings for this specific date
     try {
-        const response = await fetch(`${API_BASE_URL}/bookings?from_date=${dateStr}&to_date=${dateStr}`);
+        const response = await apiFetch(`${API_BASE_URL}/bookings?from_date=${dateStr}&to_date=${dateStr}`);
         const data = await response.json();
         const dayBookings = (data.bookings || data || []).filter(b => b.booking_date.split('T')[0] === dateStr);
 
@@ -731,7 +835,7 @@ async function showBookingDetails(bookingId) {
     modal.style.display = 'flex';
 
     try {
-        const response = await fetch(`${API_BASE_URL}/bookings/${bookingId}`);
+        const response = await apiFetch(`${API_BASE_URL}/bookings/${bookingId}`);
         const data = await response.json();
         const booking = data.booking || data;
 
@@ -833,7 +937,7 @@ async function confirmBooking() {
             (currentBookingDetails.players ? currentBookingDetails.players.map(p => p.player_name || p.name) : null) ||
             [currentBookingDetails.customer_name];
 
-        const response = await fetch(`${API_BASE_URL}/bookings/${currentBookingDetails.id}/confirm`, {
+        const response = await apiFetch(`${API_BASE_URL}/bookings/${currentBookingDetails.id}/confirm`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ player_names: playerNames })
@@ -856,7 +960,7 @@ async function deleteBooking() {
     if (!currentBookingDetails) return;
 
     try {
-        const response = await fetch(`${API_BASE_URL}/bookings/${currentBookingDetails.id}`, {
+        const response = await apiFetch(`${API_BASE_URL}/bookings/${currentBookingDetails.id}`, {
             method: 'DELETE'
         });
 
@@ -932,7 +1036,7 @@ async function loadAvailableSlots(courtId, date) {
     slotsContainer.innerHTML = '<div class="loading-slots">Caricamento orari...</div>';
 
     try {
-        const response = await fetch(`${API_BASE_URL}/bookings/available-slots?court_id=${courtId}&date=${date}`);
+        const response = await apiFetch(`${API_BASE_URL}/bookings/available-slots?court_id=${courtId}&date=${date}`);
         const data = await response.json();
         const slots = data.slots || data || [];
 
@@ -970,18 +1074,47 @@ function selectBookingSlot(el, time) {
     if (el.classList.contains('occupied')) {
         return;
     }
-    
+
     // Remove previous selection
     document.querySelectorAll('.timeline-slot.selected').forEach(s => s.classList.remove('selected'));
-    
+
     // Add selection to clicked slot
     el.classList.add('selected');
-    
+
     // Set hidden input value
     const timeInput = document.getElementById('booking-time');
     if (timeInput) {
         timeInput.value = time;
     }
+
+    // Update info text with selected duration
+    updateSelectedSlotInfo();
+}
+
+function updateSelectedSlotInfo() {
+    const infoEl = document.getElementById('selected-slot-info');
+    const timeInput = document.getElementById('booking-time');
+    const durationSelect = document.getElementById('booking-duration');
+    const courtSelect = document.getElementById('booking-court');
+
+    if (!infoEl || !timeInput.value) {
+        if (infoEl) infoEl.textContent = '';
+        return;
+    }
+
+    const startTime = timeInput.value;
+    const court = courtsCache.find(c => String(c.id) === String(courtSelect.value));
+    const selectedDuration = parseInt(durationSelect.value) || 0;
+    const duration = selectedDuration > 0 ? selectedDuration : (court?.default_duration_minutes || 90);
+
+    // Calculate end time
+    const [startHour, startMin] = startTime.split(':').map(Number);
+    const endMinutes = startHour * 60 + startMin + duration;
+    const endHour = Math.floor(endMinutes / 60);
+    const endMin = endMinutes % 60;
+    const endTime = `${String(endHour).padStart(2, '0')}:${String(endMin).padStart(2, '0')}`;
+
+    infoEl.textContent = `Orario: ${startTime} - ${endTime} (${duration} min)`;
 }
 // ==========================================
 // PLAYER SELECTION FOR BOOKINGS
@@ -1005,7 +1138,7 @@ function setupPlayerSearch() {
         }
 
         try {
-            const response = await fetch(`${API_BASE_URL}/players/search?q=${encodeURIComponent(query)}`);
+            const response = await apiFetch(`${API_BASE_URL}/players/search?q=${encodeURIComponent(query)}`);
             const data = await response.json();
             const players = data.players || data || [];
 
@@ -1161,6 +1294,9 @@ function setupModals() {
             currentMonth = 11;
             currentYear--;
         }
+        selectedDate = null;
+        document.getElementById('selected-date-display').textContent = '-';
+        document.getElementById('daily-bookings-timeline').innerHTML = '<p style="color: var(--text-secondary); padding: 1rem;">Seleziona una data dal calendario</p>';
         renderCalendar();
     });
 
@@ -1170,6 +1306,9 @@ function setupModals() {
             currentMonth = 0;
             currentYear++;
         }
+        selectedDate = null;
+        document.getElementById('selected-date-display').textContent = '-';
+        document.getElementById('daily-bookings-timeline').innerHTML = '<p style="color: var(--text-secondary); padding: 1rem;">Seleziona una data dal calendario</p>';
         renderCalendar();
     });
 
@@ -1204,15 +1343,19 @@ function setupModals() {
         clearSelectedPlayers();
         populateCourtSelect();
 
-        // Imposta data odierna
-        const today = new Date().toISOString().split('T')[0];
-        document.getElementById('booking-date').value = today;
-
         // Pulisci timeline slot (utente deve scegliere campo prima)
         document.getElementById('booking-timeline-slots').innerHTML = '<p style="color: var(--text-secondary); padding: 1rem;">Seleziona un campo per vedere gli orari disponibili</p>';
         document.getElementById('selected-slot-info').textContent = '';
 
         document.getElementById('booking-modal').style.display = 'flex';
+
+        // Imposta data odierna con delay per iOS Safari
+        setTimeout(() => {
+            const today = new Date().toISOString().split('T')[0];
+            const dateInput = document.getElementById('booking-date');
+            dateInput.value = today;
+            dateInput.setAttribute('value', today);
+        }, 50);
     });
 
     // Setup player search for bookings
@@ -1238,6 +1381,9 @@ function setupModals() {
         const date = document.getElementById('booking-date').value;
         if (courtId && date) loadAvailableSlots(courtId, date);
     });
+
+    // Update slot info when duration changes
+    document.getElementById('booking-duration')?.addEventListener('change', updateSelectedSlotInfo);
 
     // New court button
     document.getElementById('new-court-btn')?.addEventListener('click', () => {
@@ -1318,9 +1464,10 @@ async function handleBookingSubmit(e) {
         return;
     }
 
-    // Calculate end_time based on court's slot duration
+    // Calculate end_time based on selected duration or court's slot duration
     const court = courtsCache.find(c => String(c.id) === String(courtId));
-    const slotDuration = court ? (court.default_duration_minutes || court.default_duration_minutes || 90) : 90;
+    const selectedDuration = parseInt(document.getElementById('booking-duration').value) || 0;
+    const slotDuration = selectedDuration > 0 ? selectedDuration : (court ? (court.default_duration_minutes || 90) : 90);
 
     // Parse start time and add duration
     const [startHour, startMin] = time.split(':').map(Number);
@@ -1353,7 +1500,7 @@ async function handleBookingSubmit(e) {
         const url = editingId ? `${API_BASE_URL}/bookings/${editingId}` : `${API_BASE_URL}/bookings`;
         const method = editingId ? 'PUT' : 'POST';
 
-        const response = await fetch(url, {
+        const response = await apiFetch(url, {
             method,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(formData)
@@ -1397,7 +1544,7 @@ async function handleCourtSubmit(e) {
         const url = courtId ? `${API_BASE_URL}/courts/${courtId}` : `${API_BASE_URL}/courts`;
         const method = courtId ? 'PUT' : 'POST';
 
-        const response = await fetch(url, {
+        const response = await apiFetch(url, {
             method,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(formData)
@@ -1433,7 +1580,7 @@ async function handlePlayerSubmit(e) {
         const url = playerId ? `${API_BASE_URL}/players/${playerId}` : `${API_BASE_URL}/players`;
         const method = playerId ? 'PUT' : 'POST';
 
-        const response = await fetch(url, {
+        const response = await apiFetch(url, {
             method,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(formData)
@@ -1467,7 +1614,7 @@ async function showMatchVideos(partitaId, partitaTitle) {
     modal.style.display = 'flex';
 
     try {
-        const response = await fetch(`${API_BASE_URL}/videos/match/${partitaId}`);
+        const response = await apiFetch(`${API_BASE_URL}/videos/match/${partitaId}`);
         const videos = await response.json();
 
         if (!videos || videos.length === 0) {
@@ -1564,7 +1711,7 @@ async function handleCreateMatch(e) {
     };
 
     try {
-        const response = await fetch(`${API_BASE_URL}/matches/create`, {
+        const response = await apiFetch(`${API_BASE_URL}/matches/create`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(formData)
@@ -1645,6 +1792,9 @@ async function handleUploadVideo(e) {
     });
 
     xhr.open('POST', `${API_BASE_URL}/videos/upload`);
+    if (authCredentials) {
+        xhr.setRequestHeader('Authorization', `Basic ${authCredentials}`);
+    }
     xhr.send(formData);
 }
 
@@ -1668,7 +1818,7 @@ async function handleSearchMatches(e) {
     if (dateFrom) params.append('dateFrom', dateFrom);
 
     try {
-        const response = await fetch(`${API_BASE_URL}/matches/search?${params.toString()}`);
+        const response = await apiFetch(`${API_BASE_URL}/matches/search?${params.toString()}`);
         const data = await response.json();
 
         if (response.ok && data.success) {
@@ -1721,7 +1871,10 @@ function renderMatchCard(partita) {
         <div class="match-card">
             <div class="match-card-header">
                 <div>
-                    <h4 class="match-card-title">${partita.booking_code}</h4>
+                    <h4 class="match-card-title" style="margin-bottom: 0.5rem;">
+                        ${partita.booking_code}
+                        <button class="btn-copy" onclick="copyToClipboard('${partita.booking_code}', this)" title="Copia codice">📋</button>
+                    </h4>
                     <span class="badge ${isActive ? 'badge-active' : 'badge-inactive'}">
                         ${isActive ? 'Active' : 'Inactive'}
                     </span>
@@ -1752,7 +1905,7 @@ function renderMatchCard(partita) {
                 </div>
                 <div class="match-detail">
                     <span class="match-detail-label">Match ID</span>
-                    <span class="match-detail-value"><code>${partita.id}</code> <button class="btn-copy" onclick="copyToClipboard('${partita.id}', this)" title="Copia ID">📋</button></span>
+                    <span class="match-detail-value"><code title="${partita.id}">${partita.id.substring(0, 8)}...</code> <button class="btn-copy" onclick="copyToClipboard('${partita.id}', this)" title="Copia ID completo">📋</button></span>
                 </div>
                 <div class="match-detail">
                     <span class="match-detail-label">Password</span>
@@ -1773,7 +1926,7 @@ function copyToClipboard(text, btn) {
 
 async function editMatch(partitaId) {
     try {
-        const response = await fetch(`${API_BASE_URL}/matches/id/${partitaId}`);
+        const response = await apiFetch(`${API_BASE_URL}/matches/id/${partitaId}`);
         const data = await response.json();
 
         if (response.ok && data.success) {
@@ -1816,7 +1969,7 @@ async function handleEditMatch(e) {
     };
 
     try {
-        const response = await fetch(`${API_BASE_URL}/matches/${partitaId}`, {
+        const response = await apiFetch(`${API_BASE_URL}/matches/${partitaId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(formData)
@@ -1847,7 +2000,7 @@ async function deleteMatch(partitaId, bookingCode) {
     if (!confirm(`Delete partita "${bookingCode}"? This will also delete all videos!`)) return;
 
     try {
-        const response = await fetch(`${API_BASE_URL}/matches/${partitaId}`, { method: 'DELETE' });
+        const response = await apiFetch(`${API_BASE_URL}/matches/${partitaId}`, { method: 'DELETE' });
         const data = await response.json();
 
         if (response.ok && data.success) {
@@ -1862,7 +2015,7 @@ async function deleteMatch(partitaId, bookingCode) {
 async function loadStorageInfo() {
     const storageInfoEl = document.getElementById('storage-info');
     try {
-        const response = await fetch(`${API_BASE_URL}/stats/storage`);
+        const response = await apiFetch(`${API_BASE_URL}/stats/storage`);
         const data = await response.json();
         storageInfoEl.innerHTML = `
             <p><strong>Storage Type:</strong> ${data.storageType || 'Unknown'}</p>
@@ -1922,10 +2075,13 @@ document.getElementById('upload-video-form-modal')?.addEventListener('submit', a
     formData.append('durationSeconds', 0);
     
     document.getElementById('upload-progress').style.display = 'block';
-    
+
     const xhr = new XMLHttpRequest();
     xhr.open('POST', API_BASE_URL + '/videos/upload');
-    
+    if (authCredentials) {
+        xhr.setRequestHeader('Authorization', `Basic ${authCredentials}`);
+    }
+
     xhr.upload.onprogress = function(e) {
         if (e.lengthComputable) {
             const percent = Math.round((e.loaded / e.total) * 100);
@@ -1933,21 +2089,20 @@ document.getElementById('upload-video-form-modal')?.addEventListener('submit', a
             document.getElementById('progress-text').textContent = percent + '%';
         }
     };
-    
+
     xhr.onload = function() {
         if (xhr.status === 200 || xhr.status === 201) {
-            // Video caricato - aggiorna lista
             closeUploadModal();
             refreshMatchSearch();
         } else {
             alert('Errore upload: ' + xhr.responseText);
         }
     };
-    
+
     xhr.onerror = function() {
         alert('Errore di connessione');
     };
-    
+
     xhr.send(formData);
 });
 
@@ -1972,10 +2127,13 @@ document.getElementById('direct-upload-form')?.addEventListener('submit', async 
     
     document.getElementById('direct-upload-progress').style.display = 'block';
     document.getElementById('direct-upload-result').innerHTML = '';
-    
+
     const xhr = new XMLHttpRequest();
     xhr.open('POST', API_BASE_URL + '/videos/upload');
-    
+    if (authCredentials) {
+        xhr.setRequestHeader('Authorization', `Basic ${authCredentials}`);
+    }
+
     xhr.upload.onprogress = function(e) {
         if (e.lengthComputable) {
             const percent = Math.round((e.loaded / e.total) * 100);
@@ -2029,3 +2187,193 @@ function filterBySport(sport) {
     // Update calendar coverage bars for filtered sport
     loadCalendarCoverage();
 }
+
+// ==========================================
+// BOOKING STATISTICS CHARTS
+// ==========================================
+let chartSport, chartWeek, chartMonth, chartYear;
+
+async function loadBookingStats() {
+    try {
+        // Get bookings for current month
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        const startOfYear = new Date(now.getFullYear(), 0, 1);
+        const endOfYear = new Date(now.getFullYear(), 11, 31);
+
+        const formatDate = (d) => d.toISOString().split('T')[0];
+
+        // Fetch year bookings for all stats
+        const response = await apiFetch(`${API_BASE_URL}/bookings?from_date=${formatDate(startOfYear)}&to_date=${formatDate(endOfYear)}`);
+        const data = await response.json();
+        const bookings = data.bookings || [];
+
+        renderSportChart(bookings);
+        renderWeekChart(bookings);
+        renderMonthChart(bookings);
+        renderYearChart(bookings);
+    } catch (error) {
+        console.error('Error loading booking stats:', error);
+    }
+}
+
+function renderSportChart(bookings) {
+    const ctx = document.getElementById('chart-sport');
+    if (!ctx) return;
+
+    // Count by sport
+    const sportCounts = { padel: 0, tennis: 0, calcetto: 0 };
+    bookings.forEach(b => {
+        const court = courtsCache.find(c => c.id === b.court_id);
+        if (court && sportCounts[court.sport_type] !== undefined) {
+            sportCounts[court.sport_type]++;
+        }
+    });
+
+    if (chartSport) chartSport.destroy();
+    chartSport = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Padel', 'Tennis', 'Calcetto'],
+            datasets: [{
+                data: [sportCounts.padel, sportCounts.tennis, sportCounts.calcetto],
+                backgroundColor: ['#4CAF50', '#FF9800', '#2196F3'],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'bottom', labels: { color: '#fff' } }
+            }
+        }
+    });
+}
+
+function renderWeekChart(bookings) {
+    const ctx = document.getElementById('chart-week');
+    if (!ctx) return;
+
+    // Last 7 days
+    const days = [];
+    const counts = [];
+    for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const dateStr = d.toISOString().split('T')[0];
+        days.push(d.toLocaleDateString('it-IT', { weekday: 'short' }));
+        counts.push(bookings.filter(b => b.booking_date?.split('T')[0] === dateStr).length);
+    }
+
+    if (chartWeek) chartWeek.destroy();
+    chartWeek = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: days,
+            datasets: [{
+                label: 'Prenotazioni',
+                data: counts,
+                backgroundColor: '#00fff5',
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, ticks: { color: '#a0a0a0' }, grid: { color: 'rgba(255,255,255,0.1)' } },
+                x: { ticks: { color: '#a0a0a0' }, grid: { display: false } }
+            }
+        }
+    });
+}
+
+function renderMonthChart(bookings) {
+    const ctx = document.getElementById('chart-month');
+    if (!ctx) return;
+
+    // Current month by day
+    const now = new Date();
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const days = [];
+    const counts = [];
+
+    for (let i = 1; i <= daysInMonth; i++) {
+        const dateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
+        days.push(i);
+        counts.push(bookings.filter(b => b.booking_date?.split('T')[0] === dateStr).length);
+    }
+
+    if (chartMonth) chartMonth.destroy();
+    chartMonth = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: days,
+            datasets: [{
+                label: 'Prenotazioni',
+                data: counts,
+                borderColor: '#00fff5',
+                backgroundColor: 'rgba(0,255,245,0.1)',
+                fill: true,
+                tension: 0.3
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, ticks: { color: '#a0a0a0' }, grid: { color: 'rgba(255,255,255,0.1)' } },
+                x: { ticks: { color: '#a0a0a0', maxTicksLimit: 10 }, grid: { display: false } }
+            }
+        }
+    });
+}
+
+function renderYearChart(bookings) {
+    const ctx = document.getElementById('chart-year');
+    if (!ctx) return;
+
+    // Monthly totals
+    const months = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
+    const now = new Date();
+    const counts = Array(12).fill(0);
+
+    bookings.forEach(b => {
+        if (b.booking_date) {
+            const month = parseInt(b.booking_date.split('-')[1]) - 1;
+            counts[month]++;
+        }
+    });
+
+    if (chartYear) chartYear.destroy();
+    chartYear = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: months,
+            datasets: [{
+                label: 'Prenotazioni',
+                data: counts,
+                backgroundColor: '#7b2cbf',
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, ticks: { color: '#a0a0a0' }, grid: { color: 'rgba(255,255,255,0.1)' } },
+                x: { ticks: { color: '#a0a0a0' }, grid: { display: false } }
+            }
+        }
+    });
+}
+
+// Load stats when switching to bookings page
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        if (document.getElementById('chart-sport')) {
+            loadBookingStats();
+        }
+    }, 1000);
+});
