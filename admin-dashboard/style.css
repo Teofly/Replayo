@@ -1763,3 +1763,31 @@ body {
         max-height: 200px;
     }
 }
+
+/* Calendar in landscape mode on mobile */
+@media (max-width: 900px) and (orientation: landscape) {
+    .calendar-grid {
+        gap: 4px;
+    }
+    
+    .calendar-day {
+        min-height: 50px;
+        padding: 0.3rem;
+    }
+    
+    .day-coverage-bar {
+        display: block !important;
+    }
+    
+    .day-coverage-fill {
+        opacity: 1 !important;
+    }
+    
+    .calendar-day-header {
+        font-size: 0.75rem;
+    }
+    
+    .day-number {
+        font-size: 0.9rem;
+    }
+}

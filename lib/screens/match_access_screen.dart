@@ -77,15 +77,10 @@ class _MatchAccessScreenState extends State<MatchAccessScreen> {
       setState(() => _showScanner = false);
     }
 
-    // Ferma la camera
-    if (_qrController != null) {
-      await _qrController!.stopCamera();
-    }
+    // Breve delay per permettere il rebuild senza QRView
+    await Future.delayed(const Duration(milliseconds: 50));
 
-    // Aspetta che il QRView sia completamente nascosto
-    await Future.delayed(const Duration(milliseconds: 150));
-
-    // Ora naviga indietro
+    // Naviga indietro immediatamente - la camera si fermerà nel dispose
     if (mounted) {
       Navigator.of(context).pop();
     }
