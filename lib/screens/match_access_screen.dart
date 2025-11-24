@@ -286,49 +286,24 @@ class _MatchAccessScreenState extends State<MatchAccessScreen> {
     }
   }
 
-  Future<void> _stopCameraAndPop() async {
-    // Ferma la camera prima di tornare indietro
-    if (_qrController != null) {
-      await _qrController!.stopCamera();
-      _qrController!.dispose();
-      _qrController = null;
-    }
-    if (mounted) {
-      Navigator.of(context).pop();
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: !_showScanner, // Se scanner attivo, gestisci manualmente
-      onPopInvokedWithResult: (didPop, result) async {
-        if (!didPop && _showScanner) {
-          await _stopCameraAndPop();
-        }
-      },
-      child: Scaffold(
-        appBar: AppBar(
-          leading: _showScanner
-              ? IconButton(
-                  icon: const Icon(Icons.arrow_back),
-                  onPressed: _stopCameraAndPop,
-                )
-              : null,
-          title: Text(
-            _showScanner ? 'Scansiona QR Code' : 'Inserisci Codice',
-            style: GoogleFonts.orbitron(),
-          ),
-          actions: [
-            if (!kIsWeb)
-              IconButton(
-                icon: Icon(_showScanner ? Icons.edit : Icons.qr_code_scanner),
-                onPressed: () => setState(() => _showScanner = !_showScanner),
-                tooltip: _showScanner ? 'Inserimento manuale' : 'Scansiona QR',
-              ),
-          ],
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          _showScanner ? 'Scansiona QR Code' : 'Inserisci Codice',
+          style: GoogleFonts.orbitron(),
         ),
-        body: _isLoading
+        actions: [
+          if (!kIsWeb)
+            IconButton(
+              icon: Icon(_showScanner ? Icons.edit : Icons.qr_code_scanner),
+              onPressed: () => setState(() => _showScanner = !_showScanner),
+              tooltip: _showScanner ? 'Inserimento manuale' : 'Scansiona QR',
+            ),
+        ],
+      ),
+      body: _isLoading
           ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -343,7 +318,6 @@ class _MatchAccessScreenState extends State<MatchAccessScreen> {
               ),
             )
           : _showScanner ? _buildQRScanner() : _buildManualForm(),
-      ),
     );
   }
 
