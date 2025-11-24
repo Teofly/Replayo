@@ -45,10 +45,11 @@ function basicAuth(req, res, next) {
     '/matches/verify',
     '/videos/match/',
   ];
-  // Also allow video streaming and download endpoints
+  // Also allow video streaming, download and view endpoints
   if (publicPaths.some(p => req.path.startsWith(p)) ||
       req.path.match(/\/videos\/[^/]+\/stream/) ||
-      req.path.match(/\/videos\/[^/]+\/download/)) {
+      req.path.match(/\/videos\/[^/]+\/download/) ||
+      req.path.match(/\/videos\/[^/]+\/view/)) {
     return next();
   }
 
@@ -808,9 +809,30 @@ app.get('/api/users/:userId', async (req, res) => {
 app.post('/api/videos/:videoId/view', async (req, res) => {
   try {
     const { videoId } = req.params;
+
+    // Check if videoId is a valid UUID or a booking_code
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let actualVideoId = videoId;
+
+    if (!uuidRegex.test(videoId)) {
+      // It's a booking_code - find the match and get first video
+      const result = await pool.query(
+        `SELECT v.id FROM videos v
+         JOIN matches m ON v.match_id = m.id
+         WHERE m.booking_code = $1
+         ORDER BY v.created_at ASC LIMIT 1`,
+        [videoId]
+      );
+      if (result.rows.length > 0) {
+        actualVideoId = result.rows[0].id;
+      } else {
+        return res.status(404).json({ error: 'Video non trovato' });
+      }
+    }
+
     await pool.query(
       'UPDATE videos SET view_count = view_count + 1 WHERE id = $1',
-      [videoId]
+      [actualVideoId]
     );
     res.json({ success: true });
   } catch (error) {
