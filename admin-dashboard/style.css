@@ -1791,3 +1791,21 @@ body {
         font-size: 0.9rem;
     }
 }
+
+/* Fix charts overflow on mobile */
+@media (max-width: 430px) {
+    .stats-charts-grid {
+        max-width: 100%;
+        overflow-x: hidden;
+    }
+    
+    .chart-container {
+        max-width: 100%;
+        overflow: hidden;
+    }
+    
+    .chart-container canvas {
+        width: 100% !important;
+        max-width: 100%;
+    }
+}
