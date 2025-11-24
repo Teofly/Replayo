@@ -8,6 +8,7 @@ import 'dart:io' show Platform;
 import '../config/app_theme.dart';
 import '../services/auth_service.dart';
 import 'match_videos_screen.dart';
+import 'home_screen.dart';
 
 class MatchAccessScreen extends StatefulWidget {
   final bool useQRScanner;
@@ -69,20 +70,26 @@ class _MatchAccessScreenState extends State<MatchAccessScreen> {
 
   // Ferma camera e naviga indietro
   Future<void> _handleBackNavigation() async {
-    if (_isClosing) return; // Previene chiamate multiple
+    if (_isClosing) return;
+    _isClosing = true;
 
-    // Rendi lo schermo completamente nero prima di navigare
-    setState(() {
-      _isClosing = true;
-      _showScanner = false;
-    });
+    // Ferma la camera
+    await _qrController?.stopCamera();
 
-    // Aspetta che lo schermo diventi nero
-    await Future.delayed(const Duration(milliseconds: 100));
-
-    // Naviga indietro
+    // Usa pushReplacement con fade animation invece di pop
+    // Questo evita l'animazione slide che mostra la camera
     if (mounted) {
-      Navigator.of(context).pop();
+      Navigator.of(context).pushReplacement(
+        PageRouteBuilder(
+          pageBuilder: (context, animation, secondaryAnimation) {
+            return const HomeScreen();
+          },
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+          transitionDuration: const Duration(milliseconds: 200),
+        ),
+      );
     }
   }
 
