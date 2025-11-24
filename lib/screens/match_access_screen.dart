@@ -68,29 +68,16 @@ class _MatchAccessScreenState extends State<MatchAccessScreen> {
     super.dispose();
   }
 
-  // Ferma camera e naviga indietro
-  Future<void> _handleBackNavigation() async {
+  // Torna alla home
+  void _goBack() {
     if (_isClosing) return;
     _isClosing = true;
 
-    // Ferma la camera
-    await _qrController?.stopCamera();
+    // Pausa la camera immediatamente
+    _qrController?.pauseCamera();
 
-    // Usa pushReplacement con fade animation invece di pop
-    // Questo evita l'animazione slide che mostra la camera
-    if (mounted) {
-      Navigator.of(context).pushReplacement(
-        PageRouteBuilder(
-          pageBuilder: (context, animation, secondaryAnimation) {
-            return const HomeScreen();
-          },
-          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            return FadeTransition(opacity: animation, child: child);
-          },
-          transitionDuration: const Duration(milliseconds: 200),
-        ),
-      );
-    }
+    // Pop semplice
+    Navigator.of(context).pop();
   }
 
   void _onQRViewCreated(QRViewController controller) {
@@ -310,52 +297,50 @@ class _MatchAccessScreenState extends State<MatchAccessScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: !_showScanner,
-      onPopInvokedWithResult: (didPop, result) async {
-        if (!didPop && _showScanner) {
-          await _handleBackNavigation();
-        }
-      },
-      child: Scaffold(
-        appBar: AppBar(
-          leading: _showScanner
-              ? IconButton(
-                  icon: const Icon(Icons.arrow_back),
-                  onPressed: _handleBackNavigation,
-                )
-              : null,
-          title: Text(
-            _showScanner ? 'Scansiona QR Code' : 'Inserisci Codice',
-            style: GoogleFonts.orbitron(),
-          ),
-          actions: [
-            if (!kIsWeb)
-              IconButton(
-                icon: Icon(_showScanner ? Icons.edit : Icons.qr_code_scanner),
-                onPressed: () => setState(() => _showScanner = !_showScanner),
-                tooltip: _showScanner ? 'Inserimento manuale' : 'Scansiona QR',
-              ),
-          ],
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: _goBack,
         ),
-        body: _isClosing
-            ? Container(color: AppTheme.darkBg) // Schermo nero durante la chiusura
-            : _isLoading
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        CircularProgressIndicator(color: AppTheme.neonBlue),
-                        const SizedBox(height: 20),
-                        Text(
-                          'Verifica in corso...',
-                          style: GoogleFonts.roboto(color: Colors.white70),
-                        ),
-                      ],
-                    ),
-                  )
-                : _showScanner ? _buildQRScanner() : _buildManualForm(),
+        title: Text(
+          _showScanner ? 'Scansiona QR Code' : 'Inserisci Codice',
+          style: GoogleFonts.orbitron(),
+        ),
+        actions: [
+          if (!kIsWeb)
+            IconButton(
+              icon: Icon(_showScanner ? Icons.edit : Icons.qr_code_scanner),
+              onPressed: () {
+                // Pausa camera prima di cambiare vista
+                if (_showScanner) {
+                  _qrController?.pauseCamera();
+                }
+                setState(() => _showScanner = !_showScanner);
+                // Riprendi camera se torniamo allo scanner
+                if (_showScanner) {
+                  _qrController?.resumeCamera();
+                }
+              },
+              tooltip: _showScanner ? 'Inserimento manuale' : 'Scansiona QR',
+            ),
+        ],
       ),
+      body: _isLoading
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(color: AppTheme.neonBlue),
+                  const SizedBox(height: 20),
+                  Text(
+                    'Verifica in corso...',
+                    style: GoogleFonts.roboto(color: Colors.white70),
+                  ),
+                ],
+              ),
+            )
+          : _showScanner ? _buildQRScanner() : _buildManualForm(),
     );
   }
 

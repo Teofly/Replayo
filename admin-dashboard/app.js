@@ -172,6 +172,7 @@ function navigateTo(page) {
         loadStorageInfo();
     } else if (page === 'bookings') {
         loadCourts();
+        loadCalendarCoverage();
         renderCalendar();
     } else if (page === 'courts') {
         loadCourts().then(() => renderCourtsList());
@@ -385,6 +386,7 @@ async function deleteCourt(courtId, courtName) {
         });
         if (response.ok) {
             await loadCourts();
+        loadCalendarCoverage();
             renderCourtsList();
         }
     } catch (error) {
@@ -593,6 +595,7 @@ async function loadMonthBookings() {
         // Ensure courts are loaded for coverage calculation
         if (courtsCache.length === 0) {
             await loadCourts();
+        loadCalendarCoverage();
         }
 
         // Calculate total available minutes per day (all active courts, 8:00-22:00 = 14 hours)
@@ -692,6 +695,7 @@ async function renderDailyTimeline(dateStr) {
 
         if (courtsCache.length === 0) {
             await loadCourts();
+        loadCalendarCoverage();
         }
 
         // Build timeline from 8:00 to 22:00
@@ -1555,6 +1559,7 @@ async function handleCourtSubmit(e) {
         if (response.ok && (data.success || data.court || data.id)) {
             document.getElementById('court-modal').style.display = 'none';
             await loadCourts();
+        loadCalendarCoverage();
             renderCourtsList();
         } else {
             throw new Error(data.message || data.error || 'Errore salvataggio');
