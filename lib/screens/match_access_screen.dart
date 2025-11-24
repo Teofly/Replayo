@@ -80,25 +80,58 @@ class _MatchAccessScreenState extends State<MatchAccessScreen> {
     setState(() => _isProcessingQR = true);
     _qrController?.pauseCamera();
 
-    // Formato QR: booking_code|password
+    // Formato QR: booking_code|password|nome
     final parts = code.split('|');
     if (parts.length >= 2) {
       _bookingCodeController.text = parts[0];
       _passwordController.text = parts[1];
 
-      // Chiedi nome giocatore
-      final playerName = await _showPlayerNameDialog();
-      if (playerName != null && playerName.isNotEmpty) {
-        _playerNameController.text = playerName;
+      // Se il nome è presente nel QR, usa quello e fai auto-login
+      if (parts.length >= 3 && parts[2].isNotEmpty) {
+        _playerNameController.text = parts[2];
         setState(() => _showScanner = false);
-        _handleManualAccess();
+        // Auto-login diretto senza passare dalla schermata form
+        _autoLogin();
       } else {
-        _qrController?.resumeCamera();
-        setState(() => _isProcessingQR = false);
+        // Chiedi nome giocatore solo se non presente nel QR
+        final playerName = await _showPlayerNameDialog();
+        if (playerName != null && playerName.isNotEmpty) {
+          _playerNameController.text = playerName;
+          setState(() => _showScanner = false);
+          _autoLogin();
+        } else {
+          _qrController?.resumeCamera();
+          setState(() => _isProcessingQR = false);
+        }
       }
     } else {
       _showErrorDialog('QR Code non valido');
       _qrController?.resumeCamera();
+      setState(() => _isProcessingQR = false);
+    }
+  }
+
+  Future<void> _autoLogin() async {
+    setState(() => _isLoading = true);
+
+    final result = await _authService.verifyMatchAccess(
+      bookingCode: _bookingCodeController.text.trim(),
+      password: _passwordController.text.trim(),
+      playerName: _playerNameController.text.trim(),
+    );
+
+    setState(() => _isLoading = false);
+
+    if (!mounted) return;
+
+    if (result.success && result.match != null) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (context) => MatchVideosScreen(match: result.match!),
+        ),
+      );
+    } else {
+      _showErrorDialog(result.message);
       setState(() => _isProcessingQR = false);
     }
   }
