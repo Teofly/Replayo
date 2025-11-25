@@ -29,6 +29,7 @@
                 <a href="#" class="nav-item" data-page="courts">🏟️ Campi</a>
                 <a href="#" class="nav-item" data-page="matches">📹 Videos</a>
                 <a href="#" class="nav-item" data-page="overview">📊 Stato</a>
+                <a href="#" class="nav-item" data-page="test">🧪 Test</a>
             </nav>
         </aside>
 
@@ -323,6 +324,114 @@
                     </div>
                 </div>
 
+                <!-- Test Page -->
+                <div id="page-test" class="page">
+                    <div class="section">
+                        <h3>Area Test - Synology Surveillance API</h3>
+                        <p style="color: #a0a0a0; margin-bottom: 2rem;">
+                            Questa sezione serve per testare le nuove funzionalità delle API Synology Surveillance Station.
+                        </p>
+
+                        <div class="form">
+                            <h4 style="margin-bottom: 1rem;">Configurazione Synology</h4>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>IP/Host Synology NAS</label>
+                                    <input type="text" id="test-synology-host" placeholder="192.168.1.69" value="192.168.1.69">
+                                </div>
+                                <div class="form-group">
+                                    <label>Porta</label>
+                                    <input type="number" id="test-synology-port" placeholder="5000" value="5000">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Username</label>
+                                    <input type="text" id="test-synology-user" placeholder="admin" value="admin">
+                                </div>
+                                <div class="form-group">
+                                    <label>Password</label>
+                                    <input type="password" id="test-synology-pass" value="Druido#00">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>ID Telecamera</label>
+                                <input type="number" id="test-camera-id" placeholder="2" value="2">
+                                <small style="color: #a0a0a0;">ID della telecamera da usare per i test</small>
+                            </div>
+                            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                                <button class="btn btn-primary" onclick="testSynologyConnection()">Test Connessione</button>
+                                <button class="btn btn-secondary" onclick="listCameras()">Mostra Telecamere</button>
+                                <button class="btn btn-secondary" onclick="listAvailableRecordings()">Mostra Registrazioni</button>
+                            </div>
+                        </div>
+
+                        <div id="test-results" style="margin-top: 2rem; display: none;">
+                            <h4>Risultati Test</h4>
+                            <div class="info-box" id="test-output"></div>
+                        </div>
+
+                        <div id="recordings-list" style="margin-top: 2rem; display: none;">
+                            <h4>Registrazioni Disponibili</h4>
+                            <div id="recordings-output" style="max-height: 400px; overflow-y: auto;"></div>
+                        </div>
+                    </div>
+
+                    <div class="section" style="margin-top: 2rem;">
+                        <h3>Scarica Registrazione</h3>
+                        <p style="color: #a0a0a0; margin-bottom: 1.5rem;">
+                            Seleziona data, orario e match per scaricare la registrazione dal Surveillance Station.
+                        </p>
+
+                        <div class="form">
+                            <input type="hidden" id="recording-event-id">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Data Registrazione</label>
+                                    <input type="date" id="recording-date" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Ora Inizio</label>
+                                    <input type="time" id="recording-start-time" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Ora Fine</label>
+                                    <input type="time" id="recording-end-time" required>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Match</label>
+                                <select id="recording-match" required>
+                                    <option value="">-- Seleziona Match --</option>
+                                </select>
+                                <small style="color: #a0a0a0;">Il video verrà associato al match selezionato</small>
+                            </div>
+                            <div id="duration-warning" style="color: var(--danger); margin: 1rem 0; display: none;">
+                                ⚠️ La durata massima consentita è 90 minuti!
+                            </div>
+
+                            <div class="form-group" style="margin: 1rem 0;">
+                                <label style="display: flex; align-items: center; cursor: pointer;">
+                                    <input type="checkbox" id="compress-video" style="margin-right: 0.5rem; width: auto;">
+                                    <span>Comprimi video (H.264 720p - riduce dimensione ~40-50%)</span>
+                                </label>
+                                <small style="color: #a0a0a0; margin-left: 1.7rem;">
+                                    La compressione richiede qualche minuto ma riduce significativamente la dimensione del file
+                                </small>
+                            </div>
+
+                            <button class="btn btn-success" onclick="downloadRecording()">Scarica Registrazione</button>
+                        </div>
+
+                        <div id="download-progress" style="margin-top: 2rem; display: none;">
+                            <h4>Download in corso...</h4>
+                            <div class="info-box" id="download-output">
+                                <p>🔄 Richiesta in corso...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
         </main>
     </div>
 
@@ -493,10 +602,52 @@
         <div class="modal-content" style="max-width: 1000px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                 <h3 id="video-modal-title">Video Partita</h3>
-                <button type="button" class="btn btn-secondary" id="close-video-modal">Chiudi</button>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button type="button" class="btn btn-primary" id="associate-nas-video-btn" onclick="showAssociateNasVideoModal()">📁 Associa da NAS</button>
+                    <button type="button" class="btn btn-secondary" id="close-video-modal">Chiudi</button>
+                </div>
             </div>
             <div id="video-list-container"></div>
             <div id="video-player-container" style="margin-top: 1rem;"></div>
+        </div>
+    </div>
+
+    <!-- Associate NAS Video Modal -->
+    <div id="associate-nas-video-modal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 800px;">
+            <h3>Associa Video dal NAS</h3>
+
+            <!-- File Browser -->
+            <div class="form-group">
+                <label>Seleziona Video da /mnt/nas/replayo/videos</label>
+                <div id="nas-video-list" style="max-height: 300px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem;">
+                    <p style="color: var(--text-secondary); text-align: center;">Caricamento file...</p>
+                </div>
+            </div>
+
+            <form id="associate-nas-video-form" class="form">
+                <input type="hidden" id="nas-video-path" required>
+
+                <div class="form-group">
+                    <label>File Selezionato</label>
+                    <input type="text" id="nas-video-selected" readonly style="background: var(--bg-secondary); cursor: not-allowed;">
+                </div>
+
+                <div class="form-group">
+                    <label>Titolo Video</label>
+                    <input type="text" id="nas-video-title" placeholder="Es: Partita completa" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Durata (secondi)</label>
+                    <input type="number" id="nas-video-duration" placeholder="Opzionale (verrà calcolato se possibile)">
+                </div>
+
+                <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem;">
+                    <button type="button" class="btn btn-secondary" onclick="closeAssociateNasVideoModal()">Annulla</button>
+                    <button type="submit" class="btn btn-primary">Associa Video</button>
+                </div>
+            </form>
         </div>
     </div>
 

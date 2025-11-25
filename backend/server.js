@@ -5,8 +5,10 @@ const { Pool } = require('pg');
 const fs = require('fs').promises;
 const fsSync = require('fs');
 const path = require('path');
+const axios = require('axios');
+const ffmpeg = require('fluent-ffmpeg');
 const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
-const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+const { getSignedUrl} = require('@aws-sdk/s3-request-presigner');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -132,6 +134,51 @@ const upload = multer({
 });
 
 // ==================== STORAGE HELPERS ====================
+
+/**
+ * Compress video using H.265 codec and 720p resolution
+ * @param {string} inputPath - Input video file path
+ * @param {string} outputPath - Output video file path
+ * @returns {Promise<string>} - Output file path
+ */
+async function compressVideo(inputPath, outputPath) {
+  return new Promise((resolve, reject) => {
+    console.log(`[FFmpeg] Starting compression: ${inputPath} -> ${outputPath}`);
+    console.log(`[FFmpeg] Using H.264 codec, 720p resolution`);
+
+    ffmpeg(inputPath)
+      .videoCodec('libx264')              // H.264 codec
+      .size('?x720')                      // 720p height, auto width
+      .videoBitrate('2000k')              // 2 Mbps video bitrate (higher for H.264)
+      .audioCodec('aac')                  // AAC audio
+      .audioBitrate('128k')               // 128 kbps audio
+      .outputOptions([
+        '-preset medium',                 // Encoding speed (medium = balanced)
+        '-crf 23',                        // Constant Rate Factor (18-23 for H.264)
+        '-movflags +faststart',           // Optimize for web streaming
+        '-pix_fmt yuv420p'                // Pixel format for compatibility
+      ])
+      .output(outputPath)
+      .on('start', (commandLine) => {
+        console.log(`[FFmpeg] Command: ${commandLine}`);
+      })
+      .on('progress', (progress) => {
+        if (progress.percent) {
+          console.log(`[FFmpeg] Progress: ${Math.round(progress.percent)}%`);
+        }
+      })
+      .on('end', () => {
+        console.log(`[FFmpeg] Compression completed successfully`);
+        resolve(outputPath);
+      })
+      .on('error', (err, stdout, stderr) => {
+        console.error(`[FFmpeg] Error:`, err.message);
+        console.error(`[FFmpeg] stderr:`, stderr);
+        reject(err);
+      })
+      .run();
+  });
+}
 
 async function saveVideoFile(buffer, filename) {
   if (STORAGE_TYPE === 's3') {
@@ -781,6 +828,95 @@ app.delete('/api/videos/:videoId', async (req, res) => {
 
   } catch (error) {
     console.error('Error deleting video:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// List video files available on NAS
+app.get('/api/videos/list-nas-files', async (req, res) => {
+  try {
+    const files = await fs.readdir(LOCAL_STORAGE_PATH);
+
+    // Filter only video files and get stats
+    const videoExtensions = ['.mp4', '.mov', '.avi', '.mpeg', '.mpg', '.webm', '.mkv', '.m4v', '.3gp'];
+    const videoFiles = [];
+
+    for (const file of files) {
+      const ext = path.extname(file).toLowerCase();
+      if (videoExtensions.includes(ext)) {
+        const filePath = path.join(LOCAL_STORAGE_PATH, file);
+        try {
+          const stats = await fs.stat(filePath);
+          videoFiles.push({
+            name: file,
+            path: filePath,
+            size: stats.size,
+            modified: stats.mtime
+          });
+        } catch (err) {
+          console.error(`Error reading file ${file}:`, err);
+        }
+      }
+    }
+
+    // Sort by modification date (newest first)
+    videoFiles.sort((a, b) => b.modified - a.modified);
+
+    res.json({
+      success: true,
+      files: videoFiles,
+      count: videoFiles.length
+    });
+
+  } catch (error) {
+    console.error('Error listing NAS files:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Associate existing NAS video to match
+app.post('/api/videos/associate-from-nas', async (req, res) => {
+  try {
+    const { matchId, filePath, title, durationSeconds } = req.body;
+
+    if (!matchId || !filePath || !title) {
+      return res.status(400).json({ error: 'Missing required parameters' });
+    }
+
+    // Validate match exists
+    const matchResult = await pool.query('SELECT id FROM matches WHERE id = $1', [matchId]);
+    if (matchResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Match not found' });
+    }
+
+    // Check if file exists
+    try {
+      const stats = await fs.stat(filePath);
+      const fileSizeBytes = stats.size;
+
+      // Insert into database
+      const result = await pool.query(
+        `INSERT INTO videos (
+          match_id, title, file_path, duration_seconds,
+          file_size_bytes, recorded_at, is_highlight
+        ) VALUES ($1, $2, $3, $4, $5, NOW(), false)
+        RETURNING *`,
+        [matchId, title, filePath, durationSeconds || 0, fileSizeBytes]
+      );
+
+      console.log(`✅ Video associato dal NAS: ${title} (${(fileSizeBytes / 1024 / 1024).toFixed(2)} MB)`);
+
+      res.json({
+        success: true,
+        message: 'Video associato con successo',
+        video: result.rows[0]
+      });
+    } catch (fileError) {
+      return res.status(404).json({ error: `File non trovato: ${filePath}` });
+    }
+
+  } catch (error) {
+    console.error('Error associating NAS video:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -1913,24 +2049,426 @@ app.delete('/api/players/:id', async (req, res) => {
 app.post('/api/players/quick-add', async (req, res) => {
   try {
     const { full_name, phone, email } = req.body;
-    
+
     if (!full_name || full_name.trim().length < 2) {
       return res.status(400).json({ error: 'Nome obbligatorio' });
     }
-    
+
     // Separa nome e cognome
     const parts = full_name.trim().split(' ');
     const first_name = parts[0];
     const last_name = parts.slice(1).join(' ') || '';
-    
+
     const result = await pool.query(
       'INSERT INTO players (first_name, last_name, email, phone) VALUES ($1, $2, $3, $4) RETURNING *',
       [first_name, last_name, email || null, phone || null]
     );
-    
+
     res.status(201).json({ success: true, player: result.rows[0] });
   } catch (error) {
     console.error('Error quick-adding player:', error);
     res.status(500).json({ error: 'Errore aggiunta rapida' });
+  }
+});
+
+// ==================== SYNOLOGY SURVEILLANCE ENDPOINTS ====================
+
+const SynologyService = require('./synology_service');
+
+// POST /api/synology/test-connection - Test connection to Synology
+app.post('/api/synology/test-connection', async (req, res) => {
+  try {
+    const { host, port, user, pass } = req.body;
+
+    if (!host || !port || !user || !pass) {
+      return res.status(400).json({ error: 'Missing required parameters' });
+    }
+
+    const synology = new SynologyService(host, port, user, pass);
+    const result = await synology.testConnection();
+
+    res.json(result);
+  } catch (error) {
+    console.error('Synology test connection error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// POST /api/synology/download-recording-direct - Download recording using direct file path
+app.post('/api/synology/download-recording-direct', async (req, res) => {
+  try {
+    const { recordingData, matchId, compress } = req.body;
+
+    if (!recordingData || !matchId) {
+      return res.status(400).json({ error: 'Missing required parameters' });
+    }
+
+    // Verify match exists
+    const matchResult = await pool.query('SELECT * FROM matches WHERE id = $1', [matchId]);
+    if (matchResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Match not found' });
+    }
+
+    // Build file paths
+    const sourceFilePath = `${recordingData.folder}/${recordingData.path}`;
+    // Extract just the filename without subdirectories
+    const pathParts = recordingData.path.split('/');
+    const filename = pathParts[pathParts.length - 1]; // Get last part (filename only)
+    const destFilePath = path.join(LOCAL_STORAGE_PATH, filename);
+
+    console.log(`Downloading recording from Surveillance Station API and saving to ${destFilePath}...`);
+
+    // Ensure destination directory exists
+    await fs.mkdir(LOCAL_STORAGE_PATH, { recursive: true });
+
+    // Download file via Synology Surveillance Station API
+    const synologyConfig = {
+      host: '192.168.1.69',
+      port: '5000',
+      username: 'admin',
+      password: 'Druido#00'
+    };
+
+    const synology = new SynologyService(
+      synologyConfig.host,
+      synologyConfig.port,
+      synologyConfig.username,
+      synologyConfig.password
+    );
+
+    // Login to Surveillance Station
+    await synology.login();
+
+    // Download using eventId
+    const eventId = recordingData.id || recordingData.eventId;
+    const downloadUrl = `${synology.baseUrl}/webapi/entry.cgi?` +
+      `api=SYNO.SurveillanceStation.Recording&` +
+      `version=5&` +
+      `method=Download&` +
+      `eventId=${eventId}&` +
+      `_sid=${synology.sid}`;
+
+    console.log(`[Download] URL: ${downloadUrl}`);
+
+    // Download file using axios stream and save with fs.writeFile
+    const response = await axios({
+      method: 'GET',
+      url: downloadUrl,
+      responseType: 'arraybuffer',
+      httpsAgent: new (require('https').Agent)({
+        rejectUnauthorized: false
+      }),
+      timeout: 300000 // 5 minutes timeout for large files
+    });
+
+    // Determine final file path based on compression option
+    let finalFilePath = destFilePath;
+    let tempFilePath = null;
+
+    if (compress) {
+      // If compressing, save to temp file first
+      tempFilePath = destFilePath.replace('.mp4', '_temp.mp4');
+      await fs.writeFile(tempFilePath, Buffer.from(response.data));
+      console.log(`✅ File downloaded to temporary location`);
+    } else {
+      // If not compressing, save directly to final location
+      await fs.writeFile(destFilePath, Buffer.from(response.data));
+      console.log(`✅ File downloaded and saved successfully`);
+    }
+
+    await synology.logout();
+
+    // Compress video if requested
+    if (compress && tempFilePath) {
+      console.log(`🔄 Starting video compression (H.265 720p)...`);
+      try {
+        await compressVideo(tempFilePath, destFilePath);
+        console.log(`✅ Video compression completed`);
+
+        // Delete temporary uncompressed file
+        await fs.unlink(tempFilePath);
+        console.log(`🗑️ Temporary file deleted`);
+      } catch (compressionError) {
+        console.error('Compression failed:', compressionError);
+        // If compression fails, use the original file
+        await fs.rename(tempFilePath, destFilePath);
+        console.log(`⚠️ Using original uncompressed file due to compression error`);
+      }
+    }
+
+    // Get file stats from final file
+    const stats = await fs.stat(finalFilePath);
+    const fileSizeBytes = stats.size;
+
+    // Calculate duration from timestamps
+    const durationSeconds = recordingData.stopTime && recordingData.startTime
+      ? (recordingData.stopTime - recordingData.startTime)
+      : 0;
+
+    // Insert video record into database
+    const videoResult = await pool.query(
+      `INSERT INTO videos
+        (match_id, title, file_path, duration_seconds, file_size_bytes, recorded_at)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [
+        matchId,
+        recordingData.camera_name || `Recording ${recordingData.id}`,
+        destFilePath,
+        durationSeconds,
+        fileSizeBytes,
+        new Date(recordingData.startTime * 1000)
+      ]
+    );
+
+    const message = compress
+      ? `Recording compressed and saved: ${filename} (${(fileSizeBytes / 1024 / 1024).toFixed(2)} MB)`
+      : `Recording saved: ${filename} (${(fileSizeBytes / 1024 / 1024).toFixed(2)} MB)`;
+
+    console.log(`✅ ${message}`);
+
+    res.json({
+      success: true,
+      message: compress ? 'Recording compressed and saved successfully' : 'Recording copied successfully',
+      filename,
+      fileSize: fileSizeBytes,
+      duration: durationSeconds,
+      matchId,
+      videoId: videoResult.rows[0].id,
+      compressed: compress || false
+    });
+
+  } catch (error) {
+    console.error('Download recording direct error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// POST /api/synology/download-recording - Download recording and save to NAS (OLD METHOD - DEPRECATED)
+app.post('/api/synology/download-recording', async (req, res) => {
+  try {
+    const { host, port, user, pass, cameraId, date, startTime, endTime, matchId } = req.body;
+
+    // Validate inputs
+    if (!host || !port || !user || !pass || !cameraId || !date || !startTime || !endTime || !matchId) {
+      return res.status(400).json({ error: 'Missing required parameters' });
+    }
+
+    // Build datetime strings
+    const startDateTime = `${date}T${startTime}`;
+    const endDateTime = `${date}T${endTime}`;
+
+    // Validate duration (max 90 minutes)
+    const start = new Date(startDateTime);
+    const end = new Date(endDateTime);
+    const durationMinutes = (end - start) / 1000 / 60;
+
+    if (durationMinutes > 90) {
+      return res.status(400).json({ error: 'Duration exceeds 90 minutes limit' });
+    }
+
+    if (durationMinutes <= 0) {
+      return res.status(400).json({ error: 'End time must be after start time' });
+    }
+
+    // Verify match exists
+    const matchResult = await pool.query('SELECT * FROM matches WHERE id = $1', [matchId]);
+    if (matchResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Match not found' });
+    }
+
+    // Create Synology service instance
+    const synology = new SynologyService(host, port, user, pass);
+    await synology.login();
+
+    // Generate filename
+    const timestamp = new Date().getTime();
+    const filename = `recording_${date}_${startTime.replace(':', '')}_${endTime.replace(':', '')}_${timestamp}.mp4`;
+    const videoPath = path.join(LOCAL_STORAGE_PATH, filename);
+
+    // Ensure directory exists
+    await fs.mkdir(LOCAL_STORAGE_PATH, { recursive: true });
+
+    // Get recording file info from Synology
+    console.log(`Getting recording info from camera ${cameraId}...`);
+    const recordingInfo = await synology.downloadRecording(cameraId, startDateTime, endDateTime);
+
+    console.log(`Found recording file: ${recordingInfo.filePath}`);
+
+    // Copy file directly from NAS filesystem
+    // The filePath is something like: /volume1/surveillance/AXIS - M3044-V/20251124PM/...mp4
+    // We need to copy it to LOCAL_STORAGE_PATH
+    const { exec } = require('child_process');
+    const util = require('util');
+    const execPromise = util.promisify(exec);
+
+    console.log(`Copying file from ${recordingInfo.filePath} to ${videoPath}...`);
+
+    try {
+      // Use cp command to copy the file
+      await execPromise(`cp "${recordingInfo.filePath}" "${videoPath}"`);
+      console.log(`✅ File copied successfully`);
+    } catch (copyError) {
+      console.error(`Failed to copy file directly, trying alternative method:`, copyError.message);
+
+      // If direct copy fails, try via SSH to NAS
+      try {
+        await execPromise(`sshpass -p 'Druido#00' scp admin@192.168.1.69:"${recordingInfo.filePath}" "${videoPath}"`);
+        console.log(`✅ File copied via SCP`);
+      } catch (scpError) {
+        throw new Error(`Failed to copy file: ${scpError.message}`);
+      }
+    }
+
+    // Get file stats
+    const stats = await fs.stat(videoPath);
+    const fileSizeBytes = stats.size;
+
+    // Calculate duration in seconds
+    const durationSeconds = Math.floor(durationMinutes * 60);
+
+    // Insert video record into database
+    const videoResult = await pool.query(
+      `INSERT INTO videos
+        (match_id, title, file_path, duration_seconds, file_size_bytes, recorded_at)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [
+        matchId,
+        `Recording ${date} ${startTime}-${endTime}`,
+        videoPath,
+        durationSeconds,
+        fileSizeBytes,
+        startDateTime
+      ]
+    );
+
+    // Logout from Synology
+    await synology.logout();
+
+    console.log(`✅ Recording downloaded: ${filename} (${(fileSizeBytes / 1024 / 1024).toFixed(2)} MB)`);
+
+    res.json({
+      success: true,
+      message: 'Recording downloaded successfully',
+      filename,
+      fileSize: fileSizeBytes,
+      duration: durationSeconds,
+      matchId,
+      videoId: videoResult.rows[0].id
+    });
+
+  } catch (error) {
+    console.error('Download recording error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// POST /api/synology/list-cameras - List all cameras
+app.post('/api/synology/list-cameras', async (req, res) => {
+  try {
+    const { host, port, user, pass } = req.body;
+
+    if (!host || !port || !user || !pass) {
+      return res.status(400).json({ error: 'Missing required parameters' });
+    }
+
+    const synology = new SynologyService(host, port, user, pass);
+    await synology.login();
+
+    const cameras = await synology.getCameraList();
+
+    await synology.logout();
+
+    res.json({
+      success: true,
+      count: cameras.length,
+      cameras: cameras.map(cam => ({
+        id: cam.id,
+        name: cam.name,
+        model: cam.model,
+        vendor: cam.vendor,
+        enabled: cam.enabled,
+        status: cam.status
+      }))
+    });
+
+  } catch (error) {
+    console.error('List cameras error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// POST /api/synology/list-recordings - List available recordings
+app.post('/api/synology/list-recordings', async (req, res) => {
+  try {
+    const { host, port, user, pass, cameraId, fromDate, toDate } = req.body;
+
+    if (!host || !port || !user || !pass || !cameraId) {
+      return res.status(400).json({ error: 'Missing required parameters' });
+    }
+
+    // Default to last 24 hours if no dates provided
+    let startDateTime, endDateTime;
+    if (fromDate && toDate) {
+      startDateTime = fromDate;
+      endDateTime = toDate;
+    } else {
+      const now = new Date();
+      endDateTime = now.toISOString();
+      const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      startDateTime = yesterday.toISOString();
+    }
+
+    // Create Synology service instance
+    const synology = new SynologyService(host, port, user, pass);
+    await synology.login();
+
+    // List recordings
+    const recordings = await synology.listRecordings(cameraId, startDateTime, endDateTime);
+
+    // Logout
+    await synology.logout();
+
+    res.json({
+      success: true,
+      count: recordings.length,
+      recordings: recordings.map(rec => {
+        // Handle different timestamp formats
+        const startTime = rec.start_time || rec.startTime || rec.StartTime;
+        const endTime = rec.end_time || rec.endTime || rec.EndTime || rec.stopTime || rec.stop_time;
+
+        return {
+          id: rec.id,
+          cameraId: rec.camera_id || rec.cameraId,
+          startTime: startTime ? new Date(parseInt(startTime) * 1000).toISOString() : null,
+          endTime: endTime ? new Date(parseInt(endTime) * 1000).toISOString() : null,
+          duration: startTime && endTime ? (parseInt(endTime) - parseInt(startTime)) : 0,
+          type: rec.type || rec.eventType,
+          locked: rec.locked || false,
+          recording: rec.recording || false,
+          raw: rec // Include raw data for debugging
+        };
+      })
+    });
+
+  } catch (error) {
+    console.error('List recordings error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });

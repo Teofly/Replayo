@@ -155,11 +155,13 @@ function navigateTo(page) {
         'bookings': 'Prenotazioni',
         'courts': 'Gestione Campi',
         'players': 'Anagrafica Giocatori',
+        'matches': 'Videos',
         'partitaes': 'Create Match',
         'manage-partitaes': 'Manage Matches',
         'videos': 'Videos',
         'users': 'Users',
-        'storage': 'Storage'
+        'storage': 'Storage',
+        'test': 'Test'
     };
     document.getElementById('page-title').textContent = pageTitles[page] || page;
 
@@ -173,6 +175,8 @@ function navigateTo(page) {
     } else if (page === 'bookings') {
         loadCourts();
         loadCalendarCoverage();
+    } else if (page === 'test') {
+        loadMatchesForTest();
         renderCalendar();
     } else if (page === 'courts') {
         loadCourts().then(() => renderCourtsList());
@@ -1436,6 +1440,9 @@ function setupModals() {
         document.getElementById('video-player-container').innerHTML = '';
     });
 
+    // Associate NAS video form submit
+    document.getElementById('associate-nas-video-form')?.addEventListener('submit', handleAssociateNasVideo);
+
     // Booking details modal buttons
     document.getElementById('close-booking-details')?.addEventListener('click', () => {
         document.getElementById('booking-details-modal').style.display = 'none';
@@ -1607,11 +1614,19 @@ async function handlePlayerSubmit(e) {
 // ==========================================
 // MATCH VIDEO PLAYER
 // ==========================================
+// Store current match info for video association
+let currentVideoMatchId = null;
+let currentVideoMatchTitle = null;
+
 async function showMatchVideos(partitaId, partitaTitle) {
     const modal = document.getElementById('video-player-modal');
     const titleEl = document.getElementById('video-modal-title');
     const listContainer = document.getElementById('video-list-container');
     const playerContainer = document.getElementById('video-player-container');
+
+    // Store for later use
+    currentVideoMatchId = partitaId;
+    currentVideoMatchTitle = partitaTitle;
 
     titleEl.textContent = `Video: ${partitaTitle}`;
     listContainer.innerHTML = '<p>Caricamento video...</p>';
@@ -1630,11 +1645,20 @@ async function showMatchVideos(partitaId, partitaTitle) {
         listContainer.innerHTML = `
             <div style="display: flex; flex-wrap: wrap; gap: 1rem;">
                 ${videos.map(video => `
-                    <div class="stat-card" style="cursor: pointer; flex: 1; min-width: 200px;" onclick="playVideo('${video.id}', '${video.title}')">
-                        <div class="stat-icon">🎬</div>
-                        <div class="stat-info">
-                            <h3 style="font-size: 1rem;">${video.title}</h3>
-                            <p>${formatDuration(video.duration_seconds)} | ${formatBytes(video.file_size_bytes)}</p>
+                    <div class="stat-card" style="position: relative; flex: 1; min-width: 200px;">
+                        <button
+                            onclick="deleteVideo('${video.id}', '${video.title}', '${partitaId}', '${partitaTitle}'); event.stopPropagation();"
+                            class="btn btn-danger"
+                            style="position: absolute; top: 8px; right: 8px; padding: 4px 8px; font-size: 0.8rem; z-index: 10;"
+                            title="Elimina video">
+                            🗑️
+                        </button>
+                        <div style="cursor: pointer;" onclick="playVideo('${video.id}', '${video.title}')">
+                            <div class="stat-icon">🎬</div>
+                            <div class="stat-info">
+                                <h3 style="font-size: 1rem;">${video.title}</h3>
+                                <p>${formatDuration(video.duration_seconds)} | ${formatBytes(video.file_size_bytes)}</p>
+                            </div>
                         </div>
                     </div>
                 `).join('')}
@@ -1642,6 +1666,31 @@ async function showMatchVideos(partitaId, partitaTitle) {
         `;
     } catch (error) {
         listContainer.innerHTML = `<p style="color: var(--danger);">Errore: ${error.message}</p>`;
+    }
+}
+
+async function deleteVideo(videoId, videoTitle, partitaId, partitaTitle) {
+    if (!confirm(`Sei sicuro di voler eliminare il video "${videoTitle}"?\n\nQuesta azione eliminerà il video sia dal database che dal NAS.`)) {
+        return;
+    }
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/videos/${videoId}`, {
+            method: 'DELETE'
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            alert('✅ Video eliminato con successo');
+            // Ricarica la lista dei video
+            showMatchVideos(partitaId, partitaTitle);
+        } else {
+            alert(`❌ Errore: ${result.error || 'Eliminazione fallita'}`);
+        }
+    } catch (error) {
+        console.error('Delete video error:', error);
+        alert(`❌ Errore durante l'eliminazione: ${error.message}`);
     }
 }
 
@@ -1656,6 +1705,129 @@ function playVideo(videoId, title) {
             Il tuo browser non supporta il video HTML5.
         </video>
     `;
+}
+
+async function showAssociateNasVideoModal() {
+    document.getElementById('associate-nas-video-modal').style.display = 'flex';
+
+    // Clear form
+    document.getElementById('nas-video-path').value = '';
+    document.getElementById('nas-video-selected').value = '';
+    document.getElementById('nas-video-title').value = '';
+    document.getElementById('nas-video-duration').value = '';
+
+    // Load available videos from NAS
+    await loadNasVideoList();
+}
+
+async function loadNasVideoList() {
+    const listContainer = document.getElementById('nas-video-list');
+    listContainer.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">Caricamento file...</p>';
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/videos/list-nas-files`);
+        const data = await response.json();
+
+        if (!data.success || !data.files || data.files.length === 0) {
+            listContainer.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">Nessun file video trovato</p>';
+            return;
+        }
+
+        listContainer.innerHTML = data.files.map(file => `
+            <div
+                onclick="selectNasVideo('${file.path}', '${file.name}', ${file.size})"
+                style="
+                    padding: 0.75rem;
+                    margin-bottom: 0.5rem;
+                    border: 1px solid var(--border);
+                    border-radius: 6px;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                    background: var(--bg-secondary);
+                "
+                onmouseover="this.style.background='var(--accent-primary)'; this.style.borderColor='var(--accent-primary)'"
+                onmouseout="this.style.background='var(--bg-secondary)'; this.style.borderColor='var(--border)'">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="font-weight: 500; margin-bottom: 0.25rem;">📹 ${file.name}</div>
+                        <div style="font-size: 0.85rem; color: var(--text-secondary);">
+                            ${formatBytes(file.size)} • ${new Date(file.modified).toLocaleString('it-IT')}
+                        </div>
+                    </div>
+                    <div style="color: var(--accent-primary);">➜</div>
+                </div>
+            </div>
+        `).join('');
+    } catch (error) {
+        console.error('Error loading NAS video list:', error);
+        listContainer.innerHTML = '<p style="color: var(--danger); text-align: center;">Errore nel caricamento dei file</p>';
+    }
+}
+
+function selectNasVideo(filePath, fileName, fileSize) {
+    document.getElementById('nas-video-path').value = filePath;
+    document.getElementById('nas-video-selected').value = fileName;
+
+    // Auto-fill title with filename (without extension)
+    const titleWithoutExt = fileName.replace(/\.[^/.]+$/, '');
+    document.getElementById('nas-video-title').value = titleWithoutExt;
+
+    // Highlight selected file
+    const listContainer = document.getElementById('nas-video-list');
+    const items = listContainer.querySelectorAll('div[onclick]');
+    items.forEach(item => {
+        if (item.getAttribute('onclick').includes(filePath)) {
+            item.style.background = 'var(--accent-primary)';
+            item.style.borderColor = 'var(--accent-primary)';
+        } else {
+            item.style.background = 'var(--bg-secondary)';
+            item.style.borderColor = 'var(--border)';
+        }
+    });
+}
+
+function closeAssociateNasVideoModal() {
+    document.getElementById('associate-nas-video-modal').style.display = 'none';
+}
+
+async function handleAssociateNasVideo(e) {
+    e.preventDefault();
+
+    const filePath = document.getElementById('nas-video-path').value;
+    const title = document.getElementById('nas-video-title').value;
+    const duration = parseInt(document.getElementById('nas-video-duration').value);
+
+    if (!currentVideoMatchId) {
+        alert('❌ Errore: nessun match selezionato');
+        return;
+    }
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/videos/associate-from-nas`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                matchId: currentVideoMatchId,
+                filePath,
+                title,
+                durationSeconds: duration
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            alert('✅ Video associato con successo');
+            closeAssociateNasVideoModal();
+            // Ricarica la lista dei video
+            showMatchVideos(currentVideoMatchId, currentVideoMatchTitle);
+        } else {
+            alert(`❌ Errore: ${result.error || 'Associazione fallita'}`);
+        }
+    } catch (error) {
+        console.error('Associate NAS video error:', error);
+        alert(`❌ Errore durante l'associazione: ${error.message}`);
+    }
 }
 
 function formatDuration(seconds) {
@@ -2444,3 +2616,366 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }, 1000);
 });
+
+// ==================== TEST SECTION ====================
+
+async function testSynologyConnection() {
+    const host = document.getElementById('test-synology-host').value;
+    const port = document.getElementById('test-synology-port').value;
+    const user = document.getElementById('test-synology-user').value;
+    const pass = document.getElementById('test-synology-pass').value;
+
+    const resultsDiv = document.getElementById('test-results');
+    const outputDiv = document.getElementById('test-output');
+
+    if (!host || !port || !user || !pass) {
+        outputDiv.innerHTML = '<p style="color: var(--danger);">⚠️ Compila tutti i campi!</p>';
+        resultsDiv.style.display = 'block';
+        return;
+    }
+
+    outputDiv.innerHTML = '<p>🔄 Test connessione in corso...</p>';
+    resultsDiv.style.display = 'block';
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/synology/test-connection`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ host, port, user, pass })
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+            outputDiv.innerHTML = `
+                <p style="color: var(--success);">✅ Connessione riuscita!</p>
+                <pre style="background: rgba(0,0,0,0.3); padding: 1rem; border-radius: 8px; overflow-x: auto; margin-top: 1rem;">${JSON.stringify(data, null, 2)}</pre>
+            `;
+        } else {
+            outputDiv.innerHTML = `
+                <p style="color: var(--danger);">❌ Connessione fallita</p>
+                <p style="color: #a0a0a0;">${data.error || data.message || 'Errore sconosciuto'}</p>
+            `;
+        }
+    } catch (error) {
+        outputDiv.innerHTML = `
+            <p style="color: var(--danger);">❌ Errore durante il test</p>
+            <p style="color: #a0a0a0;">${error.message}</p>
+        `;
+    }
+}
+
+async function loadMatchesForTest() {
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/matches/search`);
+        const data = await response.json();
+
+        const select = document.getElementById('recording-match');
+        if (!select) return;
+
+        select.innerHTML = '<option value="">-- Seleziona Match --</option>';
+
+        if (data.matches && data.matches.length > 0) {
+            data.matches.forEach(match => {
+                const date = new Date(match.match_date).toLocaleDateString('it-IT');
+                const players = match.player_names ? match.player_names.join(', ') : 'N/A';
+                const option = document.createElement('option');
+                option.value = match.id;
+                option.textContent = `${match.booking_code} - ${date} - ${players}`;
+                select.appendChild(option);
+            });
+        }
+    } catch (error) {
+        console.error('Error loading matches:', error);
+    }
+}
+
+function validateDuration() {
+    const date = document.getElementById('recording-date').value;
+    const startTime = document.getElementById('recording-start-time').value;
+    const endTime = document.getElementById('recording-end-time').value;
+    const warningDiv = document.getElementById('duration-warning');
+
+    if (!date || !startTime || !endTime) {
+        warningDiv.style.display = 'none';
+        return true;
+    }
+
+    const start = new Date(`${date}T${startTime}`);
+    const end = new Date(`${date}T${endTime}`);
+    const durationMinutes = (end - start) / 1000 / 60;
+
+    if (durationMinutes > 90) {
+        warningDiv.style.display = 'block';
+        return false;
+    } else if (durationMinutes <= 0) {
+        warningDiv.textContent = '⚠️ L\'ora di fine deve essere successiva all\'ora di inizio!';
+        warningDiv.style.display = 'block';
+        return false;
+    }
+
+    warningDiv.style.display = 'none';
+    return true;
+}
+
+// Add validation listeners
+document.addEventListener('DOMContentLoaded', () => {
+    const dateInput = document.getElementById('recording-date');
+    const startTimeInput = document.getElementById('recording-start-time');
+    const endTimeInput = document.getElementById('recording-end-time');
+
+    if (dateInput) dateInput.addEventListener('change', validateDuration);
+    if (startTimeInput) startTimeInput.addEventListener('change', validateDuration);
+    if (endTimeInput) endTimeInput.addEventListener('change', validateDuration);
+});
+
+async function listCameras() {
+    const host = document.getElementById('test-synology-host').value;
+    const port = document.getElementById('test-synology-port').value;
+    const user = document.getElementById('test-synology-user').value;
+    const pass = document.getElementById('test-synology-pass').value;
+
+    if (!host || !port || !user || !pass) {
+        alert('Compila prima la configurazione Synology!');
+        return;
+    }
+
+    const resultsDiv = document.getElementById('test-results');
+    const outputDiv = document.getElementById('test-output');
+
+    outputDiv.innerHTML = '<p>🔄 Caricamento telecamere...</p>';
+    resultsDiv.style.display = 'block';
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/synology/list-cameras`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ host, port, user, pass })
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+            let html = `<p style="color: var(--success);">✅ Trovate ${data.count} telecamere</p>`;
+            html += '<div style="margin-top: 1rem;">';
+
+            data.cameras.forEach((cam) => {
+                html += `
+                    <div style="padding: 1rem; background: rgba(0,0,0,0.3); border-radius: 8px; margin-bottom: 0.5rem; cursor: pointer;"
+                         onclick="document.getElementById('test-camera-id').value = ${cam.id}; alert('Camera ID ${cam.id} selezionata!')">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <strong style="color: var(--accent-primary);">ID: ${cam.id}</strong>
+                                <span style="margin-left: 1rem;">${cam.name}</span>
+                            </div>
+                            <div style="color: #a0a0a0;">
+                                ${cam.model || 'N/A'} - ${cam.vendor || 'N/A'}
+                            </div>
+                        </div>
+                        <small style="color: #a0a0a0; margin-top: 0.5rem; display: block;">
+                            Status: ${cam.status} - ${cam.enabled ? 'Abilitata' : 'Disabilitata'} - Clicca per selezionare
+                        </small>
+                    </div>
+                `;
+            });
+
+            html += '</div>';
+            outputDiv.innerHTML = html;
+        } else {
+            outputDiv.innerHTML = `
+                <p style="color: var(--danger);">❌ Errore</p>
+                <p style="color: #a0a0a0;">${data.error || 'Errore sconosciuto'}</p>
+            `;
+        }
+    } catch (error) {
+        outputDiv.innerHTML = `
+            <p style="color: var(--danger);">❌ Errore durante il caricamento</p>
+            <p style="color: #a0a0a0;">${error.message}</p>
+        `;
+    }
+}
+
+async function listAvailableRecordings() {
+    const host = document.getElementById('test-synology-host').value;
+    const port = document.getElementById('test-synology-port').value;
+    const user = document.getElementById('test-synology-user').value;
+    const pass = document.getElementById('test-synology-pass').value;
+    const cameraId = document.getElementById('test-camera-id').value;
+
+    if (!host || !port || !user || !pass || !cameraId) {
+        alert('Compila prima la configurazione Synology!');
+        return;
+    }
+
+    const listDiv = document.getElementById('recordings-list');
+    const outputDiv = document.getElementById('recordings-output');
+
+    outputDiv.innerHTML = '<p>🔄 Caricamento registrazioni in corso...</p>';
+    listDiv.style.display = 'block';
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/synology/list-recordings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                host,
+                port,
+                user,
+                pass,
+                cameraId: parseInt(cameraId)
+            })
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+            if (data.recordings.length === 0) {
+                outputDiv.innerHTML = '<p style="color: #a0a0a0;">Nessuna registrazione trovata nelle ultime 24 ore.</p>';
+            } else {
+                let html = `<p style="color: var(--success);">✅ Trovate ${data.count} registrazioni (ultime 24 ore)</p>`;
+
+                // Debug: show raw data
+                html += '<details style="margin: 1rem 0; padding: 0.5rem; background: rgba(0,0,0,0.2); border-radius: 4px;"><summary style="cursor: pointer; color: #a0a0a0;">🔍 Debug: Mostra dati raw</summary><pre style="overflow-x: auto; font-size: 0.8rem; margin-top: 0.5rem;">' + JSON.stringify(data.recordings, null, 2) + '</pre></details>';
+
+                html += '<div style="margin-top: 1rem;">';
+
+                data.recordings.forEach((rec, index) => {
+                    const startDate = new Date(rec.startTime);
+                    const endDate = new Date(rec.endTime);
+                    const durationMin = Math.floor(rec.duration / 60);
+                    const durationSec = rec.duration % 60;
+
+                    // Store raw recording data as JSON string for onclick
+                    const recDataJson = JSON.stringify(rec.raw || rec).replace(/"/g, '&quot;');
+
+                    html += `
+                        <div style="padding: 1rem; background: rgba(0,0,0,0.3); border-radius: 8px; margin-bottom: 0.5rem; cursor: pointer;"
+                             onclick='selectRecordingForDownload(${JSON.stringify(rec.raw || rec)})'>
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <strong style="color: var(--accent-primary);">#${index + 1} (ID: ${rec.id})</strong>
+                                    <span style="margin-left: 1rem;">${startDate.toLocaleString('it-IT')}</span>
+                                    <span style="margin-left: 0.5rem;">→</span>
+                                    <span style="margin-left: 0.5rem;">${endDate ? endDate.toLocaleTimeString('it-IT') : 'In corso...'}</span>
+                                </div>
+                                <div style="color: #a0a0a0;">
+                                    ${durationMin}m ${durationSec}s
+                                </div>
+                            </div>
+                            <small style="color: #a0a0a0; margin-top: 0.5rem; display: block;">
+                                Clicca per scaricare questa registrazione
+                            </small>
+                        </div>
+                    `;
+                });
+
+                html += '</div>';
+                outputDiv.innerHTML = html;
+            }
+        } else {
+            outputDiv.innerHTML = `
+                <p style="color: var(--danger);">❌ Errore</p>
+                <p style="color: #a0a0a0;">${data.error || 'Errore sconosciuto'}</p>
+            `;
+        }
+    } catch (error) {
+        outputDiv.innerHTML = `
+            <p style="color: var(--danger);">❌ Errore durante il caricamento</p>
+            <p style="color: #a0a0a0;">${error.message}</p>
+        `;
+    }
+}
+
+let selectedRecording = null;
+
+function selectRecordingForDownload(recordingData) {
+    selectedRecording = recordingData;
+
+    // Fill form with recording data
+    const startDate = new Date(recordingData.startTime * 1000);
+    const endDate = recordingData.stopTime ? new Date(recordingData.stopTime * 1000) : null;
+
+    document.getElementById('recording-date').value = startDate.toISOString().split('T')[0];
+    document.getElementById('recording-start-time').value = startDate.toTimeString().split(' ')[0].substring(0,5);
+    if (endDate) {
+        document.getElementById('recording-end-time').value = endDate.toTimeString().split(' ')[0].substring(0,5);
+    }
+
+    // Store recording info in hidden field
+    document.getElementById('recording-event-id').value = recordingData.id || recordingData.eventId;
+
+    // Scroll to download section
+    document.querySelector('#recording-match').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function fillRecordingTimes(date, startTime, endTime) {
+    document.getElementById('recording-date').value = date;
+    document.getElementById('recording-start-time').value = startTime;
+    document.getElementById('recording-end-time').value = endTime;
+    validateDuration();
+
+    // Scroll to download section
+    document.querySelector('#recording-date').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function downloadRecording() {
+    const matchId = document.getElementById('recording-match').value;
+    const compressVideo = document.getElementById('compress-video').checked;
+
+    if (!matchId) {
+        alert('Seleziona un match!');
+        return;
+    }
+
+    if (!selectedRecording) {
+        alert('Seleziona prima una registrazione dalla lista!');
+        return;
+    }
+
+    const progressDiv = document.getElementById('download-progress');
+    const outputDiv = document.getElementById('download-output');
+
+    if (compressVideo) {
+        outputDiv.innerHTML = '<p>🔄 Download e compressione in corso (può richiedere alcuni minuti)...</p>';
+    } else {
+        outputDiv.innerHTML = '<p>🔄 Copia file in corso...</p>';
+    }
+    progressDiv.style.display = 'block';
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/synology/download-recording-direct`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                recordingData: selectedRecording,
+                matchId,
+                compress: compressVideo
+            })
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+            outputDiv.innerHTML = `
+                <p style="color: var(--success);">✅ Video scaricato con successo!</p>
+                <div style="margin-top: 1rem; padding: 1rem; background: rgba(0,0,0,0.3); border-radius: 8px;">
+                    <p><strong>File:</strong> ${data.filename || 'N/A'}</p>
+                    <p><strong>Dimensione:</strong> ${data.fileSize ? (data.fileSize / 1024 / 1024).toFixed(2) + ' MB' : 'N/A'}</p>
+                    <p><strong>Durata:</strong> ${data.duration ? data.duration + ' secondi' : 'N/A'}</p>
+                    <p><strong>Match ID:</strong> ${data.matchId}</p>
+                    <p><strong>Video ID:</strong> ${data.videoId}</p>
+                </div>
+            `;
+        } else {
+            outputDiv.innerHTML = `
+                <p style="color: var(--danger);">❌ Download fallito</p>
+                <p style="color: #a0a0a0;">${data.error || data.message || 'Errore sconosciuto'}</p>
+            `;
+        }
+    } catch (error) {
+        outputDiv.innerHTML = `
+            <p style="color: var(--danger);">❌ Errore durante il download</p>
+            <p style="color: #a0a0a0;">${error.message}</p>
+        `;
+    }
+}

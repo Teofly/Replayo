@@ -3,8 +3,10 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:qr_code_scanner/qr_code_scanner.dart';
 import 'dart:io' show Platform;
+
+// QR Scanner only for mobile platforms
+import 'package:qr_code_scanner/qr_code_scanner.dart' if (dart.library.html) 'qr_code_scanner_stub.dart';
 import '../config/app_theme.dart';
 import '../services/auth_service.dart';
 import 'match_videos_screen.dart';
