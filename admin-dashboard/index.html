@@ -28,6 +28,7 @@
                 <a href="#" class="nav-item" data-page="players">👤 Anagrafica</a>
                 <a href="#" class="nav-item" data-page="courts">🏟️ Campi</a>
                 <a href="#" class="nav-item" data-page="matches">📹 Videos</a>
+                <a href="#" class="nav-item" data-page="club-images">🖼️ Immagini Club</a>
                 <a href="#" class="nav-item" data-page="overview">📊 Stato</a>
             </nav>
         </aside>
@@ -113,7 +114,10 @@
 
                     <div class="section">
                         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">
-                            <h3 style="margin: 0;">Prenotazioni del Giorno: <span id="selected-date-display">-</span></h3>
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <h3 style="margin: 0;">Prenotazioni del Giorno: <span id="selected-date-display">-</span></h3>
+                                <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;" onclick="refreshDailyBookings()">Aggiorna</button>
+                            </div>
                             <div class="sport-filters">
                                 <button class="sport-filter-btn active" data-sport="all" onclick="filterBySport(null)">Tutti</button>
                                 <button class="sport-filter-btn" data-sport="padel" onclick="filterBySport('padel')">Padel</button>
@@ -192,6 +196,32 @@
                             <button class="btn btn-primary" id="new-court-btn">+ Nuovo Campo</button>
                         </div>
                         <div id="courts-list"></div>
+                    </div>
+                </div>
+
+                <!-- Club Images Page -->
+                <div id="page-club-images" class="page">
+                    <div class="section">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+                            <h3 style="margin-bottom: 0;">Gestione Immagini Club</h3>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button class="btn btn-secondary" onclick="loadClubImages()">Aggiorna</button>
+                                <label class="btn btn-primary" style="cursor: pointer;">
+                                    + Carica Immagine
+                                    <input type="file" id="club-image-upload" accept="image/jpeg,image/png,image/webp" style="display: none;" onchange="uploadClubImage(this)">
+                                </label>
+                            </div>
+                        </div>
+                        <p style="color: #a0a0a0; margin-bottom: 1.5rem;">
+                            Queste immagini vengono mostrate nella galleria "Sporty" dell'app utente.
+                            Formati supportati: JPEG, PNG, WebP. Max 10MB per immagine.
+                        </p>
+                        <div id="club-images-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem;"></div>
+                        <div id="club-images-empty" style="display: none; text-align: center; padding: 3rem; color: #a0a0a0;">
+                            <p style="font-size: 3rem; margin-bottom: 1rem;">🖼️</p>
+                            <p>Nessuna immagine caricata</p>
+                            <p style="font-size: 0.9rem;">Clicca su "Carica Immagine" per aggiungere foto del club</p>
+                        </div>
                     </div>
                 </div>
 
@@ -738,6 +768,6 @@
         </div>
     </div>
 
-    <script src="app.js?v=20251125k"></script>
+    <script src="app.js?v=20251125n"></script>
 </body>
 </html>

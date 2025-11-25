@@ -46,12 +46,17 @@ function basicAuth(req, res, next) {
     '/matches/access/',
     '/matches/verify',
     '/videos/match/',
+    '/bookings/availability',  // Public: slot disponibili per prenotazione
+    '/courts',                 // Public: lista campi
+    '/club/images',            // Public: immagini club
   ];
   // Also allow video streaming, download and view endpoints
+  // And POST /bookings for user booking requests (will be pending status)
   if (publicPaths.some(p => req.path.startsWith(p)) ||
       req.path.match(/\/videos\/[^/]+\/stream/) ||
       req.path.match(/\/videos\/[^/]+\/download/) ||
-      req.path.match(/\/videos\/[^/]+\/view/)) {
+      req.path.match(/\/videos\/[^/]+\/view/) ||
+      (req.method === 'POST' && req.path === '/bookings')) {
     return next();
   }
 
@@ -242,6 +247,7 @@ app.get("/api/status/environment", async (req, res) => {
       nas: { status: "unknown", path: "/mnt/nas/replayo/videos" },
       synology: { status: "unknown" },
       cronVideoDownload: { status: "unknown" },
+      bookingPage: { status: "unknown", port: 8084 },
       dependencies: { nodejs: process.version, pm2: "running" },
       timestamp: new Date().toISOString()
     };
@@ -296,9 +302,69 @@ app.get("/api/status/environment", async (req, res) => {
       status.cronVideoDownload.status = "unknown";
     }
 
+    // Check Booking Page service
+    try {
+      const bookingCheck = await new Promise((resolve, reject) => {
+        exec("pm2 jlist 2>/dev/null", (err, stdout) => {
+          if (err) reject(err);
+          else {
+            try {
+              const processes = JSON.parse(stdout);
+              const bookingProcess = processes.find(p => p.name === 'replayo-booking');
+              resolve(bookingProcess);
+            } catch {
+              resolve(null);
+            }
+          }
+        });
+      });
+      if (bookingCheck && bookingCheck.pm2_env.status === 'online') {
+        status.bookingPage.status = "online";
+        status.bookingPage.uptime = bookingCheck.pm2_env.pm_uptime;
+      } else if (bookingCheck) {
+        status.bookingPage.status = bookingCheck.pm2_env.status;
+      } else {
+        status.bookingPage.status = "not_running";
+      }
+    } catch (bookingError) {
+      status.bookingPage.status = "unknown";
+    }
+
     res.json({ success: true, status: status });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/cron/video-download - Esegui manualmente il cron video download
+app.post('/api/cron/video-download', async (req, res) => {
+  const { exec } = require('child_process');
+
+  try {
+    const result = await new Promise((resolve, reject) => {
+      exec('cd /home/teofly/replayo/backend && node cron-video-download.js 2>&1',
+        { timeout: 300000 }, // 5 minuti timeout
+        (err, stdout, stderr) => {
+          if (err && !stdout) {
+            reject(new Error(stderr || err.message));
+          } else {
+            resolve(stdout || stderr);
+          }
+        }
+      );
+    });
+
+    res.json({
+      success: true,
+      message: 'Cron job eseguito',
+      output: result
+    });
+  } catch (error) {
+    console.error('Manual cron error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 
@@ -1384,6 +1450,153 @@ app.get('/api/stats/bookings', async (req, res) => {
   }
 });
 
+// ==================== CLUB IMAGES API ====================
+
+// Path per le immagini del club
+const CLUB_IMAGES_PATH = process.env.CLUB_IMAGES_PATH || '/mnt/nas/replayo/club-images';
+
+// Multer per upload immagini
+const imageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Formato immagine non supportato. Usa JPEG, PNG o WebP.'));
+    }
+  }
+});
+
+// GET /api/club/images - Lista immagini club (pubblico)
+app.get('/api/club/images', async (req, res) => {
+  try {
+    // Crea la directory se non esiste
+    await fs.mkdir(CLUB_IMAGES_PATH, { recursive: true });
+
+    const files = await fs.readdir(CLUB_IMAGES_PATH);
+    const images = files
+      .filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f))
+      .sort((a, b) => {
+        // Ordina per numero nel nome (es. 01.jpg, 02.jpg)
+        const numA = parseInt(a.match(/\d+/) || [0]);
+        const numB = parseInt(b.match(/\d+/) || [0]);
+        return numA - numB;
+      })
+      .map((filename, index) => ({
+        id: index + 1,
+        filename: filename,
+        url: `/api/club/images/${filename}`
+      }));
+
+    res.json({ success: true, images });
+  } catch (error) {
+    console.error('Error listing club images:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/club/images/:filename - Serve immagine (pubblico)
+app.get('/api/club/images/:filename', async (req, res) => {
+  try {
+    const filename = req.params.filename;
+    const filepath = path.join(CLUB_IMAGES_PATH, filename);
+
+    // Security: prevent path traversal
+    if (!filepath.startsWith(CLUB_IMAGES_PATH)) {
+      return res.status(403).json({ error: 'Accesso negato' });
+    }
+
+    const stat = await fs.stat(filepath);
+    const ext = path.extname(filename).toLowerCase();
+    const mimeTypes = {
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.webp': 'image/webp'
+    };
+
+    res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
+    res.setHeader('Content-Length', stat.size);
+    res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache 24h
+
+    const stream = fsSync.createReadStream(filepath);
+    stream.pipe(res);
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return res.status(404).json({ error: 'Immagine non trovata' });
+    }
+    console.error('Error serving club image:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/club/images - Upload nuova immagine (admin)
+app.post('/api/club/images', imageUpload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Nessuna immagine caricata' });
+    }
+
+    // Crea la directory se non esiste
+    await fs.mkdir(CLUB_IMAGES_PATH, { recursive: true });
+
+    // Trova il prossimo numero disponibile
+    const files = await fs.readdir(CLUB_IMAGES_PATH);
+    const existingNumbers = files
+      .map(f => parseInt(f.match(/^(\d+)/) || [0, 0])[1])
+      .filter(n => !isNaN(n));
+    const nextNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) + 1 : 1;
+
+    // Estensione originale
+    const ext = path.extname(req.file.originalname).toLowerCase() || '.jpg';
+    const filename = `${String(nextNumber).padStart(2, '0')}${ext}`;
+    const filepath = path.join(CLUB_IMAGES_PATH, filename);
+
+    // Salva il file
+    await fs.writeFile(filepath, req.file.buffer);
+
+    console.log(`[ClubImages] Uploaded: ${filename}`);
+
+    res.json({
+      success: true,
+      image: {
+        id: nextNumber,
+        filename: filename,
+        url: `/api/club/images/${filename}`
+      }
+    });
+  } catch (error) {
+    console.error('Error uploading club image:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE /api/club/images/:filename - Elimina immagine (admin)
+app.delete('/api/club/images/:filename', async (req, res) => {
+  try {
+    const filename = req.params.filename;
+    const filepath = path.join(CLUB_IMAGES_PATH, filename);
+
+    // Security: prevent path traversal
+    if (!filepath.startsWith(CLUB_IMAGES_PATH)) {
+      return res.status(403).json({ error: 'Accesso negato' });
+    }
+
+    await fs.unlink(filepath);
+    console.log(`[ClubImages] Deleted: ${filename}`);
+
+    res.json({ success: true, message: 'Immagine eliminata' });
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return res.status(404).json({ error: 'Immagine non trovata' });
+    }
+    console.error('Error deleting club image:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`🚀 RePlayo API server running on http://localhost:${PORT}`);
@@ -1511,6 +1724,125 @@ app.put('/api/courts/:id/camera', async (req, res) => {
   } catch (error) {
     console.error('Error updating court camera:', error);
     res.status(500).json({ error: 'Errore nell associazione telecamera' });
+  }
+});
+
+// GET /api/bookings/availability - Slot disponibili per prenotazione utente
+app.get('/api/bookings/availability', async (req, res) => {
+  try {
+    const { date, court_id } = req.query;
+
+    if (!date) {
+      return res.status(400).json({ error: 'Data richiesta' });
+    }
+
+    // Orari club fissi
+    const CLUB_OPEN = 8; // 08:00
+    const CLUB_CLOSE = 22; // 22:00
+
+    // Durate default per sport (minuti)
+    const DURATIONS = {
+      padel: { default: 90, fallback: 60 },
+      tennis: { default: 60, fallback: null },
+      calcetto: { default: 60, fallback: null }
+    };
+
+    // Recupera campi attivi
+    let courtsQuery = 'SELECT * FROM courts WHERE is_active = true';
+    const courtsParams = [];
+    if (court_id) {
+      courtsParams.push(court_id);
+      courtsQuery += ' AND id = $1';
+    }
+    courtsQuery += ' ORDER BY sport_type, name';
+
+    const courtsResult = await pool.query(courtsQuery, courtsParams);
+    const courts = courtsResult.rows;
+
+    if (courts.length === 0) {
+      return res.json({ success: true, date, courts: [] });
+    }
+
+    // Recupera prenotazioni del giorno per tutti i campi richiesti
+    const courtIds = courts.map(c => c.id);
+    const bookingsResult = await pool.query(
+      `SELECT court_id, start_time, end_time FROM bookings
+       WHERE booking_date = $1 AND court_id = ANY($2) AND status NOT IN ('cancelled')
+       ORDER BY start_time`,
+      [date, courtIds]
+    );
+
+    // Organizza prenotazioni per campo
+    const bookingsByCourtId = {};
+    bookingsResult.rows.forEach(b => {
+      if (!bookingsByCourtId[b.court_id]) bookingsByCourtId[b.court_id] = [];
+      bookingsByCourtId[b.court_id].push({
+        start: parseInt(b.start_time.split(':')[0]) * 60 + parseInt(b.start_time.split(':')[1]),
+        end: parseInt(b.end_time.split(':')[0]) * 60 + parseInt(b.end_time.split(':')[1])
+      });
+    });
+
+    // Calcola slot disponibili per ogni campo
+    const availability = courts.map(court => {
+      const sportType = court.sport_type.toLowerCase();
+      const durations = DURATIONS[sportType] || { default: 60, fallback: null };
+      const courtBookings = bookingsByCourtId[court.id] || [];
+
+      const slots = [];
+      const openMinutes = CLUB_OPEN * 60;
+      const closeMinutes = CLUB_CLOSE * 60;
+
+      // Genera tutti gli slot possibili (ogni 30 minuti)
+      for (let startMin = openMinutes; startMin < closeMinutes; startMin += 30) {
+        const defaultEndMin = startMin + durations.default;
+        const fallbackEndMin = durations.fallback ? startMin + durations.fallback : null;
+
+        // Verifica se lo slot default è disponibile
+        const defaultAvailable = defaultEndMin <= closeMinutes &&
+          !courtBookings.some(b => (startMin < b.end && defaultEndMin > b.start));
+
+        // Verifica se lo slot fallback è disponibile (solo per padel)
+        const fallbackAvailable = fallbackEndMin && fallbackEndMin <= closeMinutes &&
+          !courtBookings.some(b => (startMin < b.end && fallbackEndMin > b.start));
+
+        if (defaultAvailable) {
+          slots.push({
+            start_time: `${String(Math.floor(startMin / 60)).padStart(2, '0')}:${String(startMin % 60).padStart(2, '0')}`,
+            end_time: `${String(Math.floor(defaultEndMin / 60)).padStart(2, '0')}:${String(defaultEndMin % 60).padStart(2, '0')}`,
+            duration_minutes: durations.default,
+            is_fallback: false
+          });
+        } else if (fallbackAvailable) {
+          // Solo per padel: offri 60min se 90min non disponibile
+          slots.push({
+            start_time: `${String(Math.floor(startMin / 60)).padStart(2, '0')}:${String(startMin % 60).padStart(2, '0')}`,
+            end_time: `${String(Math.floor(fallbackEndMin / 60)).padStart(2, '0')}:${String(fallbackEndMin % 60).padStart(2, '0')}`,
+            duration_minutes: durations.fallback,
+            is_fallback: true,
+            note: 'Solo 1 ora disponibile'
+          });
+        }
+      }
+
+      return {
+        court_id: court.id,
+        court_name: court.name,
+        sport_type: court.sport_type,
+        default_duration: durations.default,
+        slots: slots
+      };
+    });
+
+    res.json({
+      success: true,
+      date,
+      club_hours: { open: '08:00', close: '22:00' },
+      courts: availability
+    });
+
+  } catch (error) {
+    console.error('Error fetching availability:', error);
+    res.status(500).json({ error: 'Errore nel calcolo disponibilità' });
   }
 });
 
@@ -1675,6 +2007,10 @@ app.post('/api/bookings', async (req, res) => {
       notes, auto_confirm, players
     } = req.body;
 
+    // Se richiesta senza auth, forza sempre pending (prenotazione utente)
+    const isAuthenticated = req.headers.authorization?.startsWith('Basic ');
+    const canAutoConfirm = isAuthenticated && auto_confirm;
+
     // Estrai nomi giocatori
     const playerNames = players && Array.isArray(players)
       ? players.map(p => p.player_name || p.name).filter(n => n)
@@ -1708,8 +2044,8 @@ app.post('/api/bookings', async (req, res) => {
       return res.status(409).json({ error: 'Slot già prenotato' });
     }
     
-    // Determina stato iniziale
-    const status = auto_confirm ? 'confirmed' : 'pending';
+    // Determina stato iniziale (solo admin può auto-confermare)
+    const status = canAutoConfirm ? 'confirmed' : 'pending';
     
     // Crea prenotazione con player_names
     const bookingResult = await pool.query(
@@ -1724,8 +2060,8 @@ app.post('/api/bookings', async (req, res) => {
 
     const booking = bookingResult.rows[0];
 
-    // Se auto_confirm, crea subito il match
-    if (auto_confirm && court.has_video_recording) {
+    // Se auto_confirm (solo per admin auth), crea subito il match
+    if (canAutoConfirm && court.has_video_recording) {
       const matchResult = await createMatchFromBooking(booking, court, playerNames);
       if (matchResult) {
         booking.match_id = matchResult.id;

@@ -77,14 +77,15 @@ async function downloadVideoForBooking(bookingId) {
 async function main() {
   log('=== INIZIO CRON JOB VIDEO DOWNLOAD ===');
 
-  // Calcola la data di oggi
+  // Calcola la data di oggi in ora italiana (Europe/Rome)
   const today = new Date();
-  const dateStr = today.toISOString().split('T')[0];
+  const italianTime = new Date(today.toLocaleString('en-US', { timeZone: 'Europe/Rome' }));
+  const dateStr = italianTime.toISOString().split('T')[0];
 
-  // Calcola anche l'ora corrente per capire quali prenotazioni sono già passate
-  const currentHour = today.getHours();
+  // Calcola anche l'ora corrente italiana per capire quali prenotazioni sono già passate
+  const currentHour = italianTime.getHours();
 
-  log(`Data: ${dateStr}, Ora corrente: ${currentHour}:55`);
+  log(`Data: ${dateStr}, Ora corrente italiana: ${currentHour}:55 (UTC: ${today.getUTCHours()}:55)`);
 
   try {
     // Recupera prenotazioni del giorno che necessitano video
@@ -97,15 +98,30 @@ async function main() {
       return;
     }
 
-    log(`Trovate ${bookings.length} prenotazioni totali`);
+    log(`Trovate ${bookings.length} prenotazioni totali del giorno`);
+    const currentMinute = italianTime.getMinutes();
 
-    // Filtra solo le prenotazioni già terminate (ora < ora corrente) e senza video
+    // Log dettagliato di ogni prenotazione
+    bookings.forEach(b => {
+      const endTimeParts = b.end_time.split(':');
+      const endHour = parseInt(endTimeParts[0]);
+      const endMinute = parseInt(endTimeParts[1] || 0);
+      const isEnded = endHour < currentHour || (endHour === currentHour && endMinute <= currentMinute);
+      const status = b.has_video ? '✓ ha video' : (isEnded ? '⏳ da processare' : '⏰ non terminata');
+      log(`  - ${b.court_name} ${b.start_time}-${b.end_time} (${b.customer_name}): ${status}`);
+    });
+
+    // Filtra solo le prenotazioni già terminate (end_time <= ora corrente) e senza video
     const bookingsToProcess = bookings.filter(b => {
-      const bookingHour = parseInt(b.start_time.split(':')[0]);
+      const endTimeParts = b.end_time.split(':');
+      const endHour = parseInt(endTimeParts[0]);
+      const endMinute = parseInt(endTimeParts[1] || 0);
+
       // Processa solo se:
-      // 1. L'ora della prenotazione è già passata (booking iniziato almeno 1 ora fa per sicurezza)
+      // 1. La prenotazione è terminata (end_time <= ora corrente)
       // 2. Non ha già un video
-      return bookingHour < currentHour && !b.has_video;
+      const isEnded = endHour < currentHour || (endHour === currentHour && endMinute <= currentMinute);
+      return isEnded && !b.has_video;
     });
 
     if (bookingsToProcess.length === 0) {

@@ -185,6 +185,36 @@ function navigateTo(page) {
     }
 }
 
+// Esegui manualmente il cron video download
+async function runCronManually() {
+    if (!confirm('Eseguire il cron job video download ora?')) return;
+
+    try {
+        const btn = event.target;
+        const originalText = btn.textContent;
+        btn.textContent = '⏳ Esecuzione...';
+        btn.disabled = true;
+
+        const response = await apiFetch(`${API_BASE_URL}/cron/video-download`, {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alert('Cron job completato!\n\n' + data.output);
+        } else {
+            alert('Errore: ' + (data.error || 'Sconosciuto'));
+        }
+
+        btn.textContent = originalText;
+        btn.disabled = false;
+        checkAPIStatus(); // Refresh status
+    } catch (error) {
+        alert('Errore: ' + error.message);
+    }
+}
+
 // API Status Check
 async function checkAPIStatus() {
     const statusEl = document.getElementById("api-status");
@@ -201,13 +231,15 @@ async function checkAPIStatus() {
             const uptimeStr = uptimeHrs > 0 ? `${uptimeHrs}h ${uptimeMin % 60}m` : `${uptimeMin}m`;
             const synologyStatus = s.synology?.status === "connected";
             const cronStatus = s.cronVideoDownload?.status === "active";
+            const bookingStatus = s.bookingPage?.status === "online";
             envStatusEl.innerHTML = `
                 <p><strong>Server:</strong> <span style="color: var(--success)">🟢 Online</span> (uptime: ${uptimeStr})</p>
                 <p><strong>API:</strong> <span style="color: var(--success)">🟢 Connesso</span> - <code>${API_BASE_URL}</code></p>
                 <p><strong>Database:</strong> <span style="color: ${s.database.status === "connected" ? "var(--success)" : "var(--danger)"}">${s.database.status === "connected" ? "🟢" : "🔴"} ${s.database.status}</span> (${s.database.name || "N/A"})</p>
                 <p><strong>NAS Storage:</strong> <span style="color: ${s.nas.status === "mounted" ? "var(--success)" : "var(--danger)"}">${s.nas.status === "mounted" ? "🟢" : "🔴"} ${s.nas.status}</span></p>
                 <p><strong>Synology Surveillance:</strong> <span style="color: ${synologyStatus ? "var(--success)" : "var(--danger)"}">${synologyStatus ? "🟢" : "🔴"} ${synologyStatus ? `Connesso (${s.synology.cameras} telecamere)` : (s.synology?.error || "Non connesso")}</span></p>
-                <p><strong>Cron Video Download:</strong> <span style="color: ${cronStatus ? "var(--success)" : "var(--warning)"}">${cronStatus ? "🟢" : "🟡"} ${cronStatus ? s.cronVideoDownload.schedule : "Non configurato"}</span></p>
+                <p><strong>Cron Video Download:</strong> <span style="color: ${cronStatus ? "var(--success)" : "var(--warning)"}">${cronStatus ? "🟢" : "🟡"} ${cronStatus ? s.cronVideoDownload.schedule : "Non configurato"}</span> <button onclick="runCronManually()" style="margin-left: 0.5rem; padding: 0.25rem 0.5rem; font-size: 0.75rem; background: #2a2a3e; border: 1px solid #3a3a4e; border-radius: 4px; color: #a0a0a0; cursor: pointer;">Esegui Ora</button></p>
+                <p><strong>Booking Page:</strong> <span style="color: ${bookingStatus ? "var(--success)" : "var(--danger)"}">${bookingStatus ? "🟢" : "🔴"} ${bookingStatus ? `Online (porta ${s.bookingPage.port})` : s.bookingPage?.status || "Non disponibile"}</span></p>
                 <hr style="border-color: var(--border); margin: 0.5rem 0;">
                 <p><strong>Dipendenze:</strong></p>
                 <p style="margin-left: 1rem;">• Node.js: ${s.dependencies.nodejs}</p>
@@ -672,6 +704,12 @@ async function loadMonthBookings() {
         });
     } catch (error) {
         console.error('Error loading bookings:', error);
+    }
+}
+
+function refreshDailyBookings() {
+    if (selectedDate) {
+        renderDailyTimeline(selectedDate);
     }
 }
 
@@ -3471,4 +3509,123 @@ document.addEventListener('DOMContentLoaded', () => {
     if (dateInput && !dateInput.value) {
         dateInput.value = new Date().toISOString().split('T')[0];
     }
+});
+
+
+// ==================== CLUB IMAGES MANAGEMENT ====================
+
+async function loadClubImages() {
+    const grid = document.getElementById('club-images-grid');
+    const empty = document.getElementById('club-images-empty');
+    
+    if (!grid) return;
+    
+    grid.innerHTML = '<p style="color: #a0a0a0; text-align: center; grid-column: 1/-1;">Caricamento...</p>';
+    empty.style.display = 'none';
+    
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/club/images`);
+        const data = await response.json();
+        
+        if (!data.success) throw new Error(data.error);
+        
+        if (data.images.length === 0) {
+            grid.innerHTML = '';
+            empty.style.display = 'block';
+            return;
+        }
+        
+        grid.innerHTML = data.images.map(img => `
+            <div class="club-image-card" style="position: relative; border-radius: 12px; overflow: hidden; aspect-ratio: 1; background: #1a1a2e;">
+                <img src="${API_BASE_URL}/club/images/${img.filename}" 
+                     alt="${img.filename}" 
+                     style="width: 100%; height: 100%; object-fit: cover; cursor: pointer;"
+                     onclick="previewClubImage('${img.filename}')">
+                <div style="position: absolute; bottom: 0; left: 0; right: 0; padding: 0.5rem; background: rgba(0,0,0,0.7); display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 0.8rem; color: #fff;">${img.filename}</span>
+                    <button class="btn btn-danger" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" 
+                            onclick="deleteClubImage('${img.filename}')">🗑️</button>
+                </div>
+            </div>
+        `).join('');
+        
+    } catch (error) {
+        console.error('Error loading club images:', error);
+        grid.innerHTML = `<p style="color: var(--danger); text-align: center; grid-column: 1/-1;">Errore: ${error.message}</p>`;
+    }
+}
+
+async function uploadClubImage(input) {
+    if (!input.files || !input.files[0]) return;
+    
+    const file = input.files[0];
+    
+    // Validate
+    if (file.size > 10 * 1024 * 1024) {
+        alert('Immagine troppo grande! Max 10MB');
+        input.value = '';
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('image', file);
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/club/images`, {
+            method: 'POST',
+            headers: getAuthHeader(),
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok || !data.success) {
+            throw new Error(data.error || 'Errore upload');
+        }
+        
+        alert('Immagine caricata con successo!');
+        loadClubImages();
+        
+    } catch (error) {
+        console.error('Error uploading club image:', error);
+        alert('Errore upload: ' + error.message);
+    }
+    
+    input.value = '';
+}
+
+async function deleteClubImage(filename) {
+    if (!confirm(`Eliminare l'immagine ${filename}?`)) return;
+    
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/club/images/${filename}`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        
+        if (!data.success) throw new Error(data.error);
+        
+        loadClubImages();
+        
+    } catch (error) {
+        console.error('Error deleting club image:', error);
+        alert('Errore eliminazione: ' + error.message);
+    }
+}
+
+function previewClubImage(filename) {
+    const url = `${API_BASE_URL}/club/images/${filename}`;
+    window.open(url, '_blank');
+}
+
+// Load club images when navigating to the page
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.nav-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            if (item.dataset.page === 'club-images') {
+                setTimeout(loadClubImages, 100);
+            }
+        });
+    });
 });

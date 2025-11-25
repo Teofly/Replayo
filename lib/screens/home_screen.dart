@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:glassmorphism/glassmorphism.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import '../config/app_theme.dart';
 import 'match_access_screen.dart';
@@ -118,6 +120,22 @@ class HomeScreen extends StatelessWidget {
                   ).animate().slideX(
                         begin: 0.3,
                         delay: 200.ms,
+                        duration: 600.ms,
+                        curve: Curves.easeOutBack,
+                      ),
+
+                  const SizedBox(height: 20),
+
+                  _buildActionCard(
+                    context,
+                    icon: Icons.calendar_month,
+                    title: 'Prenota un Campo',
+                    subtitle: 'Scegli data, orario e campo disponibile',
+                    gradient: [AppTheme.neonGreen, AppTheme.neonBlue],
+                    onTap: () => _openBookingPage(context),
+                  ).animate().slideX(
+                        begin: -0.3,
+                        delay: 300.ms,
                         duration: 600.ms,
                         curve: Curves.easeOutBack,
                       ),
@@ -416,6 +434,19 @@ class HomeScreen extends StatelessWidget {
     }
   }
 
+  Future<void> _openBookingPage(BuildContext context) async {
+    final Uri url = Uri.parse('https://booking.teofly.it');
+    try {
+      await launchUrl(url, mode: LaunchMode.platformDefault);
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Impossibile aprire la pagina di prenotazione')),
+        );
+      }
+    }
+  }
+
   void _navigateToMatchAccess(BuildContext context, bool useQR) {
     Navigator.of(context).push(
       PageRouteBuilder(
@@ -518,31 +549,74 @@ class HomeScreen extends StatelessWidget {
   }
 
   void _showClubGallery(BuildContext context, String clubName) {
-    final List<String> photos = List.generate(
-      10,
-      (index) => 'assets/images/sporty/Foto${index + 1}.jpeg',
-    );
-
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => ClubGalleryScreen(
           clubName: clubName,
-          photos: photos,
         ),
       ),
     );
   }
 }
 
-class ClubGalleryScreen extends StatelessWidget {
+class ClubGalleryScreen extends StatefulWidget {
   final String clubName;
-  final List<String> photos;
 
   const ClubGalleryScreen({
     super.key,
     required this.clubName,
-    required this.photos,
   });
+
+  @override
+  State<ClubGalleryScreen> createState() => _ClubGalleryScreenState();
+}
+
+class _ClubGalleryScreenState extends State<ClubGalleryScreen> {
+  List<String> _photos = [];
+  bool _isLoading = true;
+  bool _useNetworkImages = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadImages();
+  }
+
+  Future<void> _loadImages() async {
+    try {
+      final response = await http.get(
+        Uri.parse('https://api.teofly.it/api/club/images'),
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true && data['images'] != null) {
+          final images = data['images'] as List;
+          setState(() {
+            _photos = images
+                .map((img) => 'https://api.teofly.it/api/club/images/${img['filename']}')
+                .toList()
+                .cast<String>();
+            _isLoading = false;
+            _useNetworkImages = true;
+          });
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading club images from server: $e');
+    }
+
+    // Fallback to local assets
+    setState(() {
+      _photos = List.generate(
+        10,
+        (index) => 'assets/images/sporty/Foto${index + 1}.jpeg',
+      );
+      _isLoading = false;
+      _useNetworkImages = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -551,7 +625,7 @@ class ClubGalleryScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: AppTheme.darkCard,
         title: Text(
-          clubName,
+          widget.clubName,
           style: GoogleFonts.orbitron(
             fontSize: 20,
             fontWeight: FontWeight.bold,
@@ -563,45 +637,86 @@ class ClubGalleryScreen extends StatelessWidget {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: GridView.builder(
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: 1,
-          ),
-          itemCount: photos.length,
-          itemBuilder: (context, index) {
-            return GestureDetector(
-              onTap: () => _showFullScreenImage(context, photos, index),
-              child: Hero(
-                tag: 'photo_$index',
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(15),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppTheme.neonGreen.withOpacity(0.2),
-                        blurRadius: 10,
-                        spreadRadius: 1,
-                      ),
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(15),
-                    child: Image.asset(
-                      photos[index],
-                      fit: BoxFit.cover,
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(color: AppTheme.neonGreen),
+            )
+          : _photos.isEmpty
+              ? Center(
+                  child: Text(
+                    'Nessuna immagine disponibile',
+                    style: GoogleFonts.rajdhani(
+                      color: Colors.white70,
+                      fontSize: 16,
                     ),
                   ),
+                )
+              : Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: GridView.builder(
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                      childAspectRatio: 1,
+                    ),
+                    itemCount: _photos.length,
+                    itemBuilder: (context, index) {
+                      return GestureDetector(
+                        onTap: () => _showFullScreenImage(context, _photos, index),
+                        child: Hero(
+                          tag: 'photo_$index',
+                          child: Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(15),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppTheme.neonGreen.withOpacity(0.2),
+                                  blurRadius: 10,
+                                  spreadRadius: 1,
+                                ),
+                              ],
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(15),
+                              child: _useNetworkImages
+                                  ? Image.network(
+                                      _photos[index],
+                                      fit: BoxFit.cover,
+                                      loadingBuilder: (context, child, loadingProgress) {
+                                        if (loadingProgress == null) return child;
+                                        return Container(
+                                          color: AppTheme.darkCard,
+                                          child: const Center(
+                                            child: CircularProgressIndicator(
+                                              color: AppTheme.neonGreen,
+                                              strokeWidth: 2,
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                      errorBuilder: (context, error, stackTrace) {
+                                        return Container(
+                                          color: AppTheme.darkCard,
+                                          child: const Icon(
+                                            Icons.broken_image,
+                                            color: Colors.white54,
+                                            size: 40,
+                                          ),
+                                        );
+                                      },
+                                    )
+                                  : Image.asset(
+                                      _photos[index],
+                                      fit: BoxFit.cover,
+                                    ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 ),
-              ),
-            );
-          },
-        ),
-      ),
     );
   }
 
@@ -611,6 +726,7 @@ class ClubGalleryScreen extends StatelessWidget {
         builder: (context) => FullScreenGallery(
           photos: photos,
           initialIndex: initialIndex,
+          useNetworkImages: _useNetworkImages,
         ),
       ),
     );
@@ -620,11 +736,13 @@ class ClubGalleryScreen extends StatelessWidget {
 class FullScreenGallery extends StatefulWidget {
   final List<String> photos;
   final int initialIndex;
+  final bool useNetworkImages;
 
   const FullScreenGallery({
     super.key,
     required this.photos,
     required this.initialIndex,
+    this.useNetworkImages = false,
   });
 
   @override
@@ -682,10 +800,30 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
             child: Center(
               child: Hero(
                 tag: 'photo_$index',
-                child: Image.asset(
-                  widget.photos[index],
-                  fit: BoxFit.contain,
-                ),
+                child: widget.useNetworkImages
+                    ? Image.network(
+                        widget.photos[index],
+                        fit: BoxFit.contain,
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return const Center(
+                            child: CircularProgressIndicator(
+                              color: AppTheme.neonGreen,
+                            ),
+                          );
+                        },
+                        errorBuilder: (context, error, stackTrace) {
+                          return const Icon(
+                            Icons.broken_image,
+                            color: Colors.white54,
+                            size: 60,
+                          );
+                        },
+                      )
+                    : Image.asset(
+                        widget.photos[index],
+                        fit: BoxFit.contain,
+                      ),
               ),
             ),
           );

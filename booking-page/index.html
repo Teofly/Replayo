@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prenota Campo - RePlayo</title>
+    <style>
+        :root {
+            --bg-primary: #0a0a14;
+            --bg-secondary: #12121e;
+            --bg-card: #1a1a2e;
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0a0;
+            --accent-primary: #6c5ce7;
+            --accent-secondary: #a29bfe;
+            --success: #00b894;
+            --warning: #fdcb6e;
+            --danger: #d63031;
+            --border: #2d2d44;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 1rem;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            padding: 2rem 0;
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header p {
+            color: var(--text-secondary);
+        }
+
+        .card {
+            background: var(--bg-card);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            border: 1px solid var(--border);
+        }
+
+        .card h3 {
+            color: var(--accent-secondary);
+            margin-bottom: 1rem;
+            font-size: 1.1rem;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 0.75rem;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            font-size: 1rem;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+        }
+
+        /* Date picker styling */
+        .form-group input[type="date"] {
+            color-scheme: dark;
+        }
+
+        .form-group input[type="date"]::-webkit-calendar-picker-indicator {
+            filter: invert(1);
+            cursor: pointer;
+        }
+
+        .sport-selector {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .sport-btn {
+            flex: 1;
+            min-width: 100px;
+            padding: 1rem;
+            border: 2px solid var(--border);
+            border-radius: 10px;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s;
+        }
+
+        .sport-btn:hover {
+            border-color: var(--accent-primary);
+        }
+
+        .sport-btn.active {
+            border-color: var(--accent-primary);
+            background: rgba(108, 92, 231, 0.2);
+        }
+
+        .sport-btn .icon {
+            font-size: 1.5rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .sport-btn .name {
+            font-size: 0.9rem;
+        }
+
+        .slots-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+            gap: 0.5rem;
+        }
+
+        .slot-btn {
+            padding: 0.75rem 0.5rem;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s;
+            font-size: 0.9rem;
+        }
+
+        .slot-btn:hover {
+            border-color: var(--accent-primary);
+        }
+
+        .slot-btn.active {
+            border-color: var(--success);
+            background: rgba(0, 184, 148, 0.2);
+        }
+
+        .slot-btn.fallback {
+            border-color: var(--warning);
+        }
+
+        .slot-btn.fallback.active {
+            background: rgba(253, 203, 110, 0.2);
+        }
+
+        .slot-time {
+            font-weight: 600;
+        }
+
+        .slot-duration {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .courts-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.5rem;
+        }
+
+        .court-btn {
+            padding: 0.75rem;
+            border: 2px solid var(--border);
+            border-radius: 10px;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s;
+        }
+
+        .court-btn:hover {
+            border-color: var(--accent-primary);
+        }
+
+        .court-btn.active {
+            border-color: var(--success);
+            background: rgba(0, 184, 148, 0.1);
+        }
+
+        .court-btn .court-name {
+            font-weight: 600;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 1rem;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(108, 92, 231, 0.4);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .summary {
+            background: rgba(108, 92, 231, 0.1);
+            border: 1px solid var(--accent-primary);
+            border-radius: 10px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .summary-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .summary-row:last-child {
+            border-bottom: none;
+        }
+
+        .summary-label {
+            color: var(--text-secondary);
+        }
+
+        .summary-value {
+            font-weight: 600;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-secondary);
+        }
+
+        .no-slots {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-secondary);
+            background: rgba(214, 48, 49, 0.1);
+            border-radius: 10px;
+        }
+
+        .success-message {
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .success-message .icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+        }
+
+        .success-message h2 {
+            color: var(--success);
+            margin-bottom: 0.5rem;
+        }
+
+        .success-message p {
+            color: var(--text-secondary);
+            margin-bottom: 1.5rem;
+        }
+
+        .booking-code {
+            background: var(--bg-secondary);
+            padding: 1rem;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 1.5rem;
+            letter-spacing: 2px;
+            margin-bottom: 1rem;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .step-indicator {
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .step {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--border);
+        }
+
+        .step.active {
+            background: var(--accent-primary);
+        }
+
+        .step.completed {
+            background: var(--success);
+        }
+
+        @media (max-width: 480px) {
+            .sport-btn {
+                min-width: 80px;
+            }
+
+            .slots-grid {
+                grid-template-columns: repeat(4, 1fr);
+            }
+
+            .courts-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>RePlayo</h1>
+            <p>Prenota il tuo campo</p>
+        </div>
+
+        <div class="step-indicator">
+            <div class="step active" id="step1"></div>
+            <div class="step" id="step2"></div>
+            <div class="step" id="step3"></div>
+            <div class="step" id="step4"></div>
+        </div>
+
+        <!-- Step 1: Sport & Data -->
+        <div id="section-sport" class="card">
+            <h3>1. Scegli sport e data</h3>
+
+            <div class="form-group">
+                <label>Sport</label>
+                <div class="sport-selector">
+                    <button class="sport-btn active" data-sport="padel" onclick="selectSport('padel')">
+                        <div class="icon">🎾</div>
+                        <div class="name">Padel</div>
+                    </button>
+                    <button class="sport-btn" data-sport="tennis" onclick="selectSport('tennis')">
+                        <div class="icon">🎾</div>
+                        <div class="name">Tennis</div>
+                    </button>
+                    <button class="sport-btn" data-sport="calcetto" onclick="selectSport('calcetto')">
+                        <div class="icon">⚽</div>
+                        <div class="name">Calcetto</div>
+                    </button>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Data</label>
+                <input type="date" id="booking-date" onchange="loadAvailability()">
+            </div>
+        </div>
+
+        <!-- Step 2: Orario -->
+        <div id="section-slot" class="card hidden">
+            <h3>2. Scegli l'orario</h3>
+            <div id="slots-container" class="slots-grid">
+                <div class="loading">Caricamento orari...</div>
+            </div>
+        </div>
+
+        <!-- Step 3: Campo -->
+        <div id="section-court" class="card hidden">
+            <h3>3. Scegli il campo</h3>
+            <div id="courts-container" class="courts-grid">
+                <div class="loading">Caricamento campi...</div>
+            </div>
+        </div>
+
+        <!-- Step 4: Dati personali -->
+        <div id="section-user" class="card hidden">
+            <h3>4. I tuoi dati</h3>
+
+            <div class="form-group">
+                <label>Nome e Cognome *</label>
+                <input type="text" id="user-name" placeholder="Mario Rossi" required>
+            </div>
+
+            <div class="form-group">
+                <label>Telefono *</label>
+                <input type="tel" id="user-phone" placeholder="+39 333 1234567" required>
+            </div>
+
+            <div class="form-group">
+                <label>Email *</label>
+                <input type="email" id="user-email" placeholder="mario@email.com" required>
+            </div>
+
+            <div class="summary">
+                <div class="summary-row">
+                    <span class="summary-label">Sport</span>
+                    <span class="summary-value" id="summary-sport">-</span>
+                </div>
+                <div class="summary-row">
+                    <span class="summary-label">Data</span>
+                    <span class="summary-value" id="summary-date">-</span>
+                </div>
+                <div class="summary-row">
+                    <span class="summary-label">Orario</span>
+                    <span class="summary-value" id="summary-time">-</span>
+                </div>
+                <div class="summary-row">
+                    <span class="summary-label">Campo</span>
+                    <span class="summary-value" id="summary-court">-</span>
+                </div>
+                <div class="summary-row">
+                    <span class="summary-label">Durata</span>
+                    <span class="summary-value" id="summary-duration">-</span>
+                </div>
+            </div>
+
+            <button class="btn btn-primary" id="btn-submit" onclick="submitBooking()" disabled>
+                Invia Richiesta Prenotazione
+            </button>
+            <p style="text-align: center; color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.75rem;">
+                La prenotazione dovrà essere confermata dal club
+            </p>
+        </div>
+
+        <!-- Success -->
+        <div id="section-success" class="card hidden">
+            <div class="success-message">
+                <div class="icon">✅</div>
+                <h2>Richiesta Inviata!</h2>
+                <p>La tua richiesta di prenotazione è stata inviata.<br>Riceverai conferma dal club.</p>
+                <div class="booking-code" id="success-code">-</div>
+                <p style="font-size: 0.85rem;">Conserva questo codice per riferimento</p>
+                <button class="btn btn-primary" onclick="resetForm()" style="margin-top: 1rem;">
+                    Nuova Prenotazione
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configurazione API
+        const API_BASE_URL = 'https://api.teofly.it/api';
+
+        // Stato applicazione
+        let state = {
+            sport: 'padel',
+            date: null,
+            courtId: null,
+            courtName: null,
+            slot: null,
+            availability: null,
+            allSlots: [] // Tutti gli slot unici per lo sport selezionato
+        };
+
+        // Inizializzazione
+        document.addEventListener('DOMContentLoaded', () => {
+            // Imposta data minima (oggi)
+            const today = new Date().toISOString().split('T')[0];
+            const dateInput = document.getElementById('booking-date');
+            dateInput.min = today;
+            dateInput.value = today;
+            state.date = today;
+
+            loadAvailability();
+        });
+
+        function selectSport(sport) {
+            state.sport = sport;
+            state.courtId = null;
+            state.courtName = null;
+            state.slot = null;
+
+            // Aggiorna UI
+            document.querySelectorAll('.sport-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.sport === sport);
+            });
+
+            loadAvailability();
+        }
+
+        async function loadAvailability() {
+            const date = document.getElementById('booking-date').value;
+            if (!date) return;
+
+            state.date = date;
+            state.courtId = null;
+            state.courtName = null;
+            state.slot = null;
+
+            // Mostra sezione orari, nascondi campi e user
+            document.getElementById('section-slot').classList.remove('hidden');
+            document.getElementById('section-court').classList.add('hidden');
+            document.getElementById('section-user').classList.add('hidden');
+
+            updateSteps(1);
+
+            const slotsContainer = document.getElementById('slots-container');
+            slotsContainer.innerHTML = '<div class="loading">Caricamento orari disponibili...</div>';
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/bookings/availability?date=${date}`);
+                const data = await response.json();
+
+                if (!data.success) {
+                    throw new Error(data.error || 'Errore nel caricamento');
+                }
+
+                state.availability = data.courts;
+
+                // Filtra campi per sport selezionato
+                const courts = data.courts.filter(c => c.sport_type.toLowerCase() === state.sport);
+
+                if (courts.length === 0) {
+                    slotsContainer.innerHTML = '<div class="no-slots">Nessun campo disponibile per questo sport</div>';
+                    return;
+                }
+
+                // Raccogli tutti gli slot unici da tutti i campi dello sport
+                // Per Padel: solo slot da 90 minuti (60 min solo dal club)
+                // Per Tennis/Calcetto: slot da 60 minuti (standard)
+                const slotsMap = new Map();
+                courts.forEach(court => {
+                    court.slots.forEach(slot => {
+                        // Filtra per Padel: solo 90 minuti
+                        // Per altri sport: accetta la durata standard (60 min)
+                        if (state.sport === 'padel' && slot.duration_minutes !== 90) return;
+
+                        const key = `${slot.start_time}-${slot.duration_minutes}`;
+                        if (!slotsMap.has(key)) {
+                            slotsMap.set(key, {
+                                start_time: slot.start_time,
+                                end_time: slot.end_time,
+                                duration_minutes: slot.duration_minutes,
+                                is_fallback: slot.is_fallback,
+                                courts: [] // Campi disponibili per questo slot
+                            });
+                        }
+                        slotsMap.get(key).courts.push({
+                            court_id: court.court_id,
+                            court_name: court.court_name
+                        });
+                    });
+                });
+
+                // Converti in array e ordina per orario
+                state.allSlots = Array.from(slotsMap.values()).sort((a, b) =>
+                    a.start_time.localeCompare(b.start_time)
+                );
+
+                if (state.allSlots.length === 0) {
+                    slotsContainer.innerHTML = '<div class="no-slots">Nessun orario disponibile</div>';
+                    return;
+                }
+
+                // Mostra slot
+                let html = '';
+                state.allSlots.forEach(slot => {
+                    const courtsCount = slot.courts.length;
+                    html += `
+                        <button class="slot-btn"
+                                data-start="${slot.start_time}"
+                                data-duration="${slot.duration_minutes}"
+                                onclick="selectSlot('${slot.start_time}', '${slot.end_time}', ${slot.duration_minutes})">
+                            <div class="slot-time">${slot.start_time}</div>
+                            <div class="slot-duration">${courtsCount} ${courtsCount === 1 ? 'campo' : 'campi'}</div>
+                        </button>
+                    `;
+                });
+                slotsContainer.innerHTML = html;
+
+            } catch (error) {
+                console.error('Error:', error);
+                slotsContainer.innerHTML = `<div class="no-slots">Errore: ${error.message}</div>`;
+            }
+        }
+
+        function selectSlot(startTime, endTime, duration) {
+            state.slot = { startTime, endTime, duration };
+            state.courtId = null;
+            state.courtName = null;
+
+            // Aggiorna UI slot
+            document.querySelectorAll('.slot-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.start === startTime && parseInt(btn.dataset.duration) === duration);
+            });
+
+            // Mostra campi disponibili per questo slot
+            document.getElementById('section-court').classList.remove('hidden');
+            document.getElementById('section-user').classList.add('hidden');
+
+            updateSteps(2);
+
+            // Trova i campi disponibili per questo slot
+            const slotData = state.allSlots.find(s => s.start_time === startTime && s.duration_minutes === duration);
+            const courtsContainer = document.getElementById('courts-container');
+
+            if (!slotData || slotData.courts.length === 0) {
+                courtsContainer.innerHTML = '<div class="no-slots">Nessun campo disponibile per questo orario</div>';
+                return;
+            }
+
+            let html = '';
+            slotData.courts.forEach(court => {
+                html += `
+                    <button class="court-btn" data-court-id="${court.court_id}" onclick="selectCourt('${court.court_id}', '${court.court_name}')">
+                        <div class="court-name">${court.court_name}</div>
+                    </button>
+                `;
+            });
+            courtsContainer.innerHTML = html;
+        }
+
+        function selectCourt(courtId, courtName) {
+            state.courtId = courtId;
+            state.courtName = courtName;
+
+            // Aggiorna UI campi
+            document.querySelectorAll('.court-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.courtId === courtId);
+            });
+
+            // Mostra form utente
+            document.getElementById('section-user').classList.remove('hidden');
+
+            updateSteps(3);
+            updateSummary();
+            validateForm();
+        }
+
+        function updateSummary() {
+            const sportNames = { padel: 'Padel', tennis: 'Tennis', calcetto: 'Calcetto' };
+            document.getElementById('summary-sport').textContent = sportNames[state.sport] || state.sport;
+            document.getElementById('summary-court').textContent = state.courtName || '-';
+
+            if (state.date) {
+                const dateObj = new Date(state.date);
+                document.getElementById('summary-date').textContent = dateObj.toLocaleDateString('it-IT', {
+                    weekday: 'long', day: 'numeric', month: 'long'
+                });
+            }
+
+            if (state.slot) {
+                document.getElementById('summary-time').textContent = `${state.slot.startTime} - ${state.slot.endTime}`;
+                document.getElementById('summary-duration').textContent = `${state.slot.duration} minuti`;
+            }
+        }
+
+        function validateForm() {
+            const name = document.getElementById('user-name').value.trim();
+            const phone = document.getElementById('user-phone').value.trim();
+            const email = document.getElementById('user-email').value.trim();
+
+            // Validazione telefono (minimo 8 cifre, può avere +, spazi, trattini)
+            const phoneClean = phone.replace(/[\s\-\(\)]/g, '');
+            const phoneRegex = /^\+?[0-9]{8,15}$/;
+            const isValidPhone = phoneRegex.test(phoneClean);
+
+            // Validazione email
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            const isValidEmail = emailRegex.test(email);
+
+            // Mostra feedback visivo per telefono non valido
+            const phoneInput = document.getElementById('user-phone');
+            if (phone && !isValidPhone) {
+                phoneInput.style.borderColor = 'var(--danger)';
+            } else {
+                phoneInput.style.borderColor = '';
+            }
+
+            // Mostra feedback visivo per email non valida
+            const emailInput = document.getElementById('user-email');
+            if (email && !isValidEmail) {
+                emailInput.style.borderColor = 'var(--danger)';
+            } else {
+                emailInput.style.borderColor = '';
+            }
+
+            const isValid = name && isValidPhone && isValidEmail && state.courtId && state.slot;
+            document.getElementById('btn-submit').disabled = !isValid;
+        }
+
+        // Aggiungi event listener per validazione
+        document.getElementById('user-name').addEventListener('input', validateForm);
+        document.getElementById('user-phone').addEventListener('input', validateForm);
+        document.getElementById('user-email').addEventListener('input', validateForm);
+
+        async function submitBooking() {
+            const name = document.getElementById('user-name').value.trim();
+            const phone = document.getElementById('user-phone').value.trim();
+            const email = document.getElementById('user-email').value.trim();
+
+            // Validazione telefono anche al submit
+            const phoneClean = phone.replace(/[\s\-\(\)]/g, '');
+            const phoneRegex = /^\+?[0-9]{8,15}$/;
+            if (!phoneRegex.test(phoneClean)) {
+                alert('Inserisci un numero di telefono valido');
+                return;
+            }
+
+            // Validazione email anche al submit
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(email)) {
+                alert('Inserisci un indirizzo email valido');
+                return;
+            }
+
+            if (!name || !phone || !email || !state.courtId || !state.slot) {
+                alert('Compila tutti i campi richiesti');
+                return;
+            }
+
+            const btn = document.getElementById('btn-submit');
+            btn.disabled = true;
+            btn.textContent = 'Invio in corso...';
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/bookings`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        court_id: state.courtId,
+                        booking_date: state.date,
+                        start_time: state.slot.startTime,
+                        end_time: state.slot.endTime,
+                        customer_name: name,
+                        customer_phone: phone,
+                        customer_email: email,
+                        num_players: state.sport === 'calcetto' ? 10 : 4,
+                        auto_confirm: false // Sempre da confermare
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || 'Errore nella prenotazione');
+                }
+
+                // Mostra successo
+                document.getElementById('section-sport').classList.add('hidden');
+                document.getElementById('section-slot').classList.add('hidden');
+                document.getElementById('section-court').classList.add('hidden');
+                document.getElementById('section-user').classList.add('hidden');
+                document.getElementById('section-success').classList.remove('hidden');
+
+                // Genera codice riferimento
+                const bookingCode = data.booking?.id?.substring(0, 8).toUpperCase() ||
+                                   `${state.date.replace(/-/g, '').slice(-6)}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+                document.getElementById('success-code').textContent = bookingCode;
+
+                updateSteps(4);
+
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Errore: ' + error.message);
+                btn.disabled = false;
+                btn.textContent = 'Invia Richiesta Prenotazione';
+            }
+        }
+
+        function resetForm() {
+            // Reset state
+            state = {
+                sport: 'padel',
+                date: new Date().toISOString().split('T')[0],
+                courtId: null,
+                courtName: null,
+                slot: null,
+                availability: null,
+                allSlots: []
+            };
+
+            // Reset UI
+            document.getElementById('section-sport').classList.remove('hidden');
+            document.getElementById('section-slot').classList.add('hidden');
+            document.getElementById('section-court').classList.add('hidden');
+            document.getElementById('section-user').classList.add('hidden');
+            document.getElementById('section-success').classList.add('hidden');
+
+            // Reset form
+            document.getElementById('user-name').value = '';
+            document.getElementById('user-phone').value = '';
+            document.getElementById('user-email').value = '';
+            document.getElementById('booking-date').value = state.date;
+
+            // Reset sport buttons
+            document.querySelectorAll('.sport-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.sport === 'padel');
+            });
+
+            updateSteps(0);
+            loadAvailability();
+        }
+
+        function updateSteps(currentStep) {
+            for (let i = 1; i <= 4; i++) {
+                const step = document.getElementById(`step${i}`);
+                step.classList.remove('active', 'completed');
+                if (i < currentStep + 1) {
+                    step.classList.add('completed');
+                } else if (i === currentStep + 1) {
+                    step.classList.add('active');
+                }
+            }
+        }
+    </script>
+</body>
+</html>
