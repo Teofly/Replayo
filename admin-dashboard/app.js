@@ -2434,6 +2434,7 @@ async function loadBookingStats() {
             renderWeekChart(data.daily_trend);
             renderMonthChart(data.daily_trend);
             renderYearChart(data.monthly_trend);
+            renderHeatmap(data.heatmap);
         }
     } catch (error) {
         console.error('Error loading booking stats:', error);
@@ -2606,6 +2607,50 @@ function renderYearChart(monthlyTrend) {
             }
         }
     });
+}
+
+// Render Heatmap (solo orari con scala colori graduale)
+function renderHeatmap(heatmapData) {
+    const container = document.getElementById('heatmap-container');
+    if (!container) return;
+
+    // Aggrega per ora (somma tutti i giorni)
+    const hourTotals = {};
+    heatmapData.forEach(item => {
+        if (!hourTotals[item.hour]) hourTotals[item.hour] = 0;
+        hourTotals[item.hour] += item.count;
+    });
+
+    // Trova il massimo
+    let maxCount = 0;
+    Object.values(hourTotals).forEach(count => {
+        if (count > maxCount) maxCount = count;
+    });
+
+    // Determina livello heat (0-10) - graduale
+    const getHeatLevel = (count) => {
+        if (count === 0 || !count) return 0;
+        if (maxCount === 0) return 0;
+        const ratio = count / maxCount;
+        // Scala da 1 a 10 in base alla percentuale
+        return Math.min(10, Math.max(1, Math.ceil(ratio * 10)));
+    };
+
+    // Build HTML - celle colorate con numero in sovraimpressione (8:00-21:00)
+    let html = '';
+    for (let h = 8; h <= 21; h++) {
+        const count = hourTotals[h] || 0;
+        const heatLevel = getHeatLevel(count);
+
+        html += `
+            <div class="hour-cell heat-${heatLevel}" title="${h}:00 - ${count} prenotazioni">
+                <span class="hour-cell-count">${count}</span>
+                <span class="hour-cell-label">${h}:00</span>
+            </div>
+        `;
+    }
+
+    container.innerHTML = html;
 }
 
 // Load stats when switching to bookings page

@@ -1730,6 +1730,105 @@ body {
     }
 }
 
+/* ========================================
+   HEATMAP ORARI
+   ======================================== */
+.heatmap-section {
+    background: var(--bg-card);
+    border-radius: 12px;
+    padding: 1.5rem;
+    border: 1px solid rgba(0, 255, 245, 0.1);
+}
+
+.heatmap-hours {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0;
+    width: 100%;
+}
+
+.hour-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    height: 56px;
+    border-radius: 0;
+    cursor: default;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    box-sizing: border-box;
+}
+
+.hour-cell:hover {
+    outline: 2px solid #fff;
+    outline-offset: -2px;
+    z-index: 10;
+}
+
+.hour-cell-count {
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.hour-cell-label {
+    font-size: 0.65rem;
+    opacity: 0.9;
+}
+
+/* Heatmap gradient colors - dal freddo (blu) al caldo (rosso/arancio) */
+.hour-cell.heat-0 { background: #1a1a2e; }
+.hour-cell.heat-0 .hour-cell-count, .hour-cell.heat-0 .hour-cell-label { color: #555; }
+
+.hour-cell.heat-1 { background: #1e3d59; }
+.hour-cell.heat-1 .hour-cell-count, .hour-cell.heat-1 .hour-cell-label { color: #a8c8dc; }
+
+.hour-cell.heat-2 { background: #2e7d6e; }
+.hour-cell.heat-2 .hour-cell-count, .hour-cell.heat-2 .hour-cell-label { color: #c8e6e0; }
+
+.hour-cell.heat-3 { background: #4caf50; }
+.hour-cell.heat-3 .hour-cell-count, .hour-cell.heat-3 .hour-cell-label { color: #fff; }
+
+.hour-cell.heat-4 { background: #8bc34a; }
+.hour-cell.heat-4 .hour-cell-count, .hour-cell.heat-4 .hour-cell-label { color: #1a1a2e; }
+
+.hour-cell.heat-5 { background: #cddc39; }
+.hour-cell.heat-5 .hour-cell-count, .hour-cell.heat-5 .hour-cell-label { color: #1a1a2e; }
+
+.hour-cell.heat-6 { background: #ffeb3b; }
+.hour-cell.heat-6 .hour-cell-count, .hour-cell.heat-6 .hour-cell-label { color: #1a1a2e; }
+
+.hour-cell.heat-7 { background: #ffc107; }
+.hour-cell.heat-7 .hour-cell-count, .hour-cell.heat-7 .hour-cell-label { color: #1a1a2e; }
+
+.hour-cell.heat-8 { background: #ff9800; }
+.hour-cell.heat-8 .hour-cell-count, .hour-cell.heat-8 .hour-cell-label { color: #1a1a2e; }
+
+.hour-cell.heat-9 { background: #ff5722; }
+.hour-cell.heat-9 .hour-cell-count, .hour-cell.heat-9 .hour-cell-label { color: #fff; }
+
+.hour-cell.heat-10 { background: #f44336; }
+.hour-cell.heat-10 .hour-cell-count, .hour-cell.heat-10 .hour-cell-label { color: #fff; }
+
+@media (max-width: 768px) {
+    .heatmap-hours {
+        flex-wrap: wrap;
+    }
+
+    .hour-cell {
+        flex: 0 0 calc(100% / 7);
+        height: 50px;
+    }
+
+    .hour-cell-count {
+        font-size: 0.9rem;
+    }
+
+    .hour-cell-label {
+        font-size: 0.55rem;
+    }
+}
+
 /* Stats Summary Responsive */
 @media (max-width: 600px) {
     #stats-summary {

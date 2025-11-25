@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RePlayo Admin Dashboard</title>
     <link rel="icon" type="image/png" href="replayo-logo.png">
-    <link rel="stylesheet" href="style.css?v=20251124d">
+    <link rel="stylesheet" href="style.css?v=20251125f">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
@@ -29,7 +29,6 @@
                 <a href="#" class="nav-item" data-page="courts">🏟️ Campi</a>
                 <a href="#" class="nav-item" data-page="matches">📹 Videos</a>
                 <a href="#" class="nav-item" data-page="overview">📊 Stato</a>
-                <a href="#" class="nav-item" data-page="test">🧪 Test</a>
             </nav>
         </aside>
 
@@ -177,6 +176,11 @@
                                 <canvas id="chart-year"></canvas>
                             </div>
                         </div>
+                        <!-- Heatmap Orari Richiesti -->
+                        <div class="heatmap-section" style="margin-top: 2rem;">
+                            <h4 style="margin-bottom: 1rem;">Orari Più Richiesti</h4>
+                            <div id="heatmap-container" class="heatmap-hours"></div>
+                        </div>
                     </div>
                 </div>
 
@@ -322,14 +326,12 @@
                             <div id="upload-result" class="result"></div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Test Page -->
-                <div id="page-test" class="page">
-                    <div class="section">
-                        <h3>Area Test - Synology Surveillance API</h3>
+                    <!-- Synology Surveillance Section -->
+                    <div class="section" style="margin-top: 2rem;">
+                        <h3>Synology Surveillance API</h3>
                         <p style="color: #a0a0a0; margin-bottom: 2rem;">
-                            Questa sezione serve per testare le nuove funzionalità delle API Synology Surveillance Station.
+                            Configura e scarica registrazioni dal Synology Surveillance Station.
                         </p>
 
                         <div class="form">
@@ -695,6 +697,6 @@
         </div>
     </div>
 
-    <script src="app.js?v=20251124d"></script>
+    <script src="app.js?v=20251125f"></script>
 </body>
 </html>

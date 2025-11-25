@@ -1277,6 +1277,19 @@ app.get('/api/stats/bookings', async (req, res) => {
       LIMIT 10
     `, params);
 
+    // Heatmap: day of week x hour
+    const heatmapResult = await pool.query(`
+      SELECT
+        EXTRACT(DOW FROM b.booking_date) as day_of_week,
+        EXTRACT(HOUR FROM b.start_time::time) as hour,
+        COUNT(*) as count
+      FROM bookings b
+      JOIN courts c ON b.court_id = c.id
+      ${whereClause}
+      GROUP BY EXTRACT(DOW FROM b.booking_date), EXTRACT(HOUR FROM b.start_time::time)
+      ORDER BY day_of_week, hour
+    `, params);
+
     const dayNames = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
 
     res.json({
@@ -1321,6 +1334,11 @@ app.get('/api/stats/bookings', async (req, res) => {
         sport_type: r.sport_type,
         bookings_count: parseInt(r.bookings_count),
         revenue: parseFloat(r.revenue || 0)
+      })),
+      heatmap: heatmapResult.rows.map(r => ({
+        day: parseInt(r.day_of_week),
+        hour: parseInt(r.hour),
+        count: parseInt(r.count)
       }))
     });
   } catch (error) {
