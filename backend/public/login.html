@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RePlayo - Login</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 420px;
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo h1 {
+            color: #fff;
+            font-size: 2.5rem;
+            font-weight: 700;
+            letter-spacing: -1px;
+        }
+
+        .logo h1 span {
+            color: #00d9ff;
+        }
+
+        .logo p {
+            color: rgba(255,255,255,0.6);
+            font-size: 0.9rem;
+            margin-top: 5px;
+        }
+
+        .card {
+            background: rgba(255,255,255,0.05);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 40px 30px;
+            border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 0 25px 50px rgba(0,0,0,0.3);
+        }
+
+        .tabs {
+            display: flex;
+            margin-bottom: 30px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 12px;
+            padding: 5px;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 12px;
+            text-align: center;
+            color: rgba(255,255,255,0.5);
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        .tab.active {
+            background: #00d9ff;
+            color: #1a1a2e;
+        }
+
+        .tab:hover:not(.active) {
+            color: rgba(255,255,255,0.8);
+        }
+
+        .form-container {
+            display: none;
+        }
+
+        .form-container.active {
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            color: rgba(255,255,255,0.7);
+            font-size: 0.85rem;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 14px 16px;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            color: #fff;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #00d9ff;
+            background: rgba(255,255,255,0.12);
+            box-shadow: 0 0 0 3px rgba(0,217,255,0.1);
+        }
+
+        .form-group input::placeholder {
+            color: rgba(255,255,255,0.3);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #00d9ff 0%, #00b4d8 100%);
+            border: none;
+            border-radius: 10px;
+            color: #1a1a2e;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(0,217,255,0.3);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .divider {
+            display: flex;
+            align-items: center;
+            margin: 25px 0;
+            color: rgba(255,255,255,0.3);
+            font-size: 0.85rem;
+        }
+
+        .divider::before,
+        .divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: rgba(255,255,255,0.1);
+        }
+
+        .divider span {
+            padding: 0 15px;
+        }
+
+        .social-buttons {
+            display: flex;
+            gap: 15px;
+        }
+
+        .social-btn {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(255,255,255,0.05);
+            border-radius: 10px;
+            color: #fff;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .social-btn:hover {
+            background: rgba(255,255,255,0.1);
+            border-color: rgba(255,255,255,0.2);
+        }
+
+        .social-btn.disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .social-btn svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .alert {
+            padding: 12px 16px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+            display: none;
+        }
+
+        .alert.success {
+            background: rgba(0,200,100,0.15);
+            border: 1px solid rgba(0,200,100,0.3);
+            color: #00c864;
+        }
+
+        .alert.error {
+            background: rgba(255,80,80,0.15);
+            border: 1px solid rgba(255,80,80,0.3);
+            color: #ff5050;
+        }
+
+        .alert.show {
+            display: block;
+        }
+
+        .user-info {
+            display: none;
+            text-align: center;
+        }
+
+        .user-info.show {
+            display: block;
+        }
+
+        .user-avatar {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #00d9ff 0%, #00b4d8 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+            font-size: 2rem;
+            color: #1a1a2e;
+            font-weight: 700;
+        }
+
+        .user-name {
+            color: #fff;
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .user-email {
+            color: rgba(255,255,255,0.5);
+            font-size: 0.9rem;
+            margin-bottom: 5px;
+        }
+
+        .user-code {
+            display: inline-block;
+            background: rgba(0,217,255,0.15);
+            color: #00d9ff;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+
+        .user-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin: 25px 0;
+        }
+
+        .stat {
+            background: rgba(255,255,255,0.05);
+            padding: 15px;
+            border-radius: 12px;
+        }
+
+        .stat-value {
+            color: #00d9ff;
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .stat-label {
+            color: rgba(255,255,255,0.5);
+            font-size: 0.75rem;
+            margin-top: 5px;
+        }
+
+        .btn-logout {
+            background: rgba(255,80,80,0.2);
+            color: #ff5050;
+            border: 1px solid rgba(255,80,80,0.3);
+        }
+
+        .btn-logout:hover {
+            background: rgba(255,80,80,0.3);
+            box-shadow: none;
+        }
+
+        .skip-link {
+            display: block;
+            text-align: center;
+            color: rgba(255,255,255,0.5);
+            font-size: 0.85rem;
+            margin-top: 20px;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+
+        .skip-link:hover {
+            color: rgba(255,255,255,0.8);
+        }
+
+        .verification-notice {
+            background: rgba(255,180,0,0.15);
+            border: 1px solid rgba(255,180,0,0.3);
+            color: #ffb400;
+            padding: 12px 16px;
+            border-radius: 10px;
+            font-size: 0.85rem;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .verification-notice.show {
+            display: block;
+        }
+
+        .verification-notice a {
+            color: #00d9ff;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+
+        .matches-list {
+            margin-top: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .match-item {
+            background: rgba(255,255,255,0.05);
+            padding: 12px 15px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .match-info {
+            text-align: left;
+        }
+
+        .match-date {
+            color: #fff;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .match-field {
+            color: rgba(255,255,255,0.5);
+            font-size: 0.8rem;
+        }
+
+        .match-video {
+            background: linear-gradient(135deg, #00d9ff 0%, #00b4d8 100%);
+            color: #1a1a2e;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-decoration: none;
+        }
+
+        .loader {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(26,26,46,0.3);
+            border-radius: 50%;
+            border-top-color: #1a1a2e;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 480px) {
+            .card {
+                padding: 30px 20px;
+            }
+
+            .user-stats {
+                grid-template-columns: repeat(3, 1fr);
+                gap: 10px;
+            }
+
+            .stat {
+                padding: 10px;
+            }
+
+            .stat-value {
+                font-size: 1.2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">
+            <h1>Re<span>Playo</span></h1>
+            <p>Rivivi le tue partite</p>
+        </div>
+
+        <div class="card">
+            <!-- Alert Messages -->
+            <div id="alert" class="alert"></div>
+
+            <!-- Login/Register Forms -->
+            <div id="auth-forms">
+                <div class="tabs">
+                    <div class="tab active" data-tab="login">Accedi</div>
+                    <div class="tab" data-tab="register">Registrati</div>
+                </div>
+
+                <!-- Login Form -->
+                <div id="login-form" class="form-container active">
+                    <form onsubmit="handleLogin(event)">
+                        <div class="form-group">
+                            <label for="login-email">Email</label>
+                            <input type="email" id="login-email" placeholder="nome@email.com" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="login-password">Password</label>
+                            <input type="password" id="login-password" placeholder="La tua password" required>
+                        </div>
+                        <button type="submit" class="btn" id="login-btn">Accedi</button>
+                    </form>
+
+                    <div class="divider"><span>oppure</span></div>
+
+                    <div class="social-buttons">
+                        <button class="social-btn disabled" title="Presto disponibile">
+                            <svg viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                            </svg>
+                            Google
+                        </button>
+                        <button class="social-btn disabled" title="Presto disponibile">
+                            <svg viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
+                            </svg>
+                            Apple
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Register Form -->
+                <div id="register-form" class="form-container">
+                    <form onsubmit="handleRegister(event)">
+                        <div class="form-group">
+                            <label for="register-name">Nome</label>
+                            <input type="text" id="register-name" placeholder="Mario" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="register-surname">Cognome</label>
+                            <input type="text" id="register-surname" placeholder="Rossi" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="register-email">Email</label>
+                            <input type="email" id="register-email" placeholder="nome@email.com" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="register-phone">Telefono (opzionale)</label>
+                            <input type="tel" id="register-phone" placeholder="+39 333 1234567">
+                        </div>
+                        <div class="form-group">
+                            <label for="register-password">Password</label>
+                            <input type="password" id="register-password" placeholder="Minimo 8 caratteri" required minlength="8">
+                        </div>
+                        <div class="form-group">
+                            <label for="register-confirm">Conferma Password</label>
+                            <input type="password" id="register-confirm" placeholder="Ripeti la password" required>
+                        </div>
+                        <button type="submit" class="btn" id="register-btn">Registrati</button>
+                    </form>
+
+                    <div class="divider"><span>oppure</span></div>
+
+                    <div class="social-buttons">
+                        <button class="social-btn disabled" title="Presto disponibile">
+                            <svg viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                            </svg>
+                            Google
+                        </button>
+                        <button class="social-btn disabled" title="Presto disponibile">
+                            <svg viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
+                            </svg>
+                            Apple
+                        </button>
+                    </div>
+                </div>
+
+                <a href="/" class="skip-link">Continua senza account</a>
+            </div>
+
+            <!-- User Profile (shown when logged in) -->
+            <div id="user-profile" class="user-info">
+                <div class="verification-notice" id="verification-notice">
+                    La tua email non e' ancora verificata.
+                    <a onclick="resendVerification()">Invia di nuovo l'email</a>
+                </div>
+
+                <div class="user-avatar" id="user-avatar">M</div>
+                <div class="user-name" id="user-name">Mario Rossi</div>
+                <div class="user-email" id="user-email">mario@email.com</div>
+                <div class="user-code" id="user-code">ABC123</div>
+
+                <div class="user-stats">
+                    <div class="stat">
+                        <div class="stat-value" id="stat-matches">0</div>
+                        <div class="stat-label">Partite</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" id="stat-videos">0</div>
+                        <div class="stat-label">Video</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" id="stat-clubs">0</div>
+                        <div class="stat-label">Club</div>
+                    </div>
+                </div>
+
+                <div class="matches-list" id="matches-list">
+                    <!-- Matches will be loaded here -->
+                </div>
+
+                <button class="btn btn-logout" onclick="handleLogout()">Esci</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'https://api.teofly.it/api';
+        let currentUser = null;
+
+        // Tab switching
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.form-container').forEach(f => f.classList.remove('active'));
+
+                tab.classList.add('active');
+                document.getElementById(tab.dataset.tab + '-form').classList.add('active');
+                hideAlert();
+            });
+        });
+
+        // Show/hide alert
+        function showAlert(message, type = 'error') {
+            const alert = document.getElementById('alert');
+            alert.textContent = message;
+            alert.className = `alert ${type} show`;
+        }
+
+        function hideAlert() {
+            document.getElementById('alert').classList.remove('show');
+        }
+
+        // Check if user is logged in
+        function checkAuth() {
+            const token = localStorage.getItem('accessToken');
+            if (token) {
+                fetchUserProfile();
+            }
+        }
+
+        // Fetch user profile
+        async function fetchUserProfile() {
+            const token = localStorage.getItem('accessToken');
+            if (!token) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/me`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.status === 401) {
+                    // Try to refresh token
+                    const refreshed = await refreshToken();
+                    if (refreshed) {
+                        return fetchUserProfile();
+                    }
+                    return;
+                }
+
+                if (!response.ok) throw new Error('Failed to fetch profile');
+
+                const data = await response.json();
+                currentUser = data.user;
+                showUserProfile();
+                loadUserMatches();
+            } catch (error) {
+                console.error('Error fetching profile:', error);
+                localStorage.removeItem('accessToken');
+                localStorage.removeItem('refreshToken');
+            }
+        }
+
+        // Refresh access token
+        async function refreshToken() {
+            const refreshToken = localStorage.getItem('refreshToken');
+            if (!refreshToken) return false;
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/refresh`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ refreshToken })
+                });
+
+                if (!response.ok) {
+                    localStorage.removeItem('accessToken');
+                    localStorage.removeItem('refreshToken');
+                    return false;
+                }
+
+                const data = await response.json();
+                localStorage.setItem('accessToken', data.accessToken);
+                return true;
+            } catch (error) {
+                console.error('Error refreshing token:', error);
+                return false;
+            }
+        }
+
+        // Show user profile
+        function showUserProfile() {
+            document.getElementById('auth-forms').style.display = 'none';
+            document.getElementById('user-profile').classList.add('show');
+
+            // Get initials from name (could be "Mario Rossi" or just "Mario")
+            const nameParts = currentUser.name.split(' ');
+            const initials = nameParts.length > 1
+                ? (nameParts[0][0] + nameParts[1][0]).toUpperCase()
+                : currentUser.name.substring(0, 2).toUpperCase();
+
+            document.getElementById('user-avatar').textContent = initials;
+            document.getElementById('user-name').textContent = currentUser.name;
+            document.getElementById('user-email').textContent = currentUser.email;
+            document.getElementById('user-code').textContent = `Codice: ${currentUser.userCode || currentUser.user_code}`;
+
+            // Verified users don't need the notice
+            if (currentUser.emailVerified === false || currentUser.email_verified === false) {
+                document.getElementById('verification-notice').classList.add('show');
+            } else {
+                document.getElementById('verification-notice').classList.remove('show');
+            }
+        }
+
+        // Load user matches
+        async function loadUserMatches() {
+            const token = localStorage.getItem('accessToken');
+            if (!token) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/my-matches`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (!response.ok) throw new Error('Failed to load matches');
+
+                const data = await response.json();
+
+                document.getElementById('stat-matches').textContent = data.stats.totalMatches;
+                document.getElementById('stat-videos').textContent = data.stats.totalVideos;
+                document.getElementById('stat-clubs').textContent = data.stats.uniqueClubs;
+
+                const matchesList = document.getElementById('matches-list');
+                if (data.matches.length === 0) {
+                    matchesList.innerHTML = '<p style="color: rgba(255,255,255,0.5); text-align: center; padding: 20px;">Nessuna partita trovata</p>';
+                } else {
+                    matchesList.innerHTML = data.matches.map(match => `
+                        <div class="match-item">
+                            <div class="match-info">
+                                <div class="match-date">${formatDate(match.match_date)}</div>
+                                <div class="match-field">${match.field_name} - ${match.club_name}</div>
+                            </div>
+                            ${match.video_url ? `<a href="${match.video_url}" target="_blank" class="match-video">Video</a>` : ''}
+                        </div>
+                    `).join('');
+                }
+            } catch (error) {
+                console.error('Error loading matches:', error);
+            }
+        }
+
+        function formatDate(dateStr) {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('it-IT', {
+                weekday: 'short',
+                day: 'numeric',
+                month: 'short',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        // Handle login
+        async function handleLogin(e) {
+            e.preventDefault();
+            hideAlert();
+
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+            const btn = document.getElementById('login-btn');
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loader"></span>';
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Login fallito');
+                }
+
+                localStorage.setItem('accessToken', data.accessToken);
+                localStorage.setItem('refreshToken', data.refreshToken);
+                currentUser = data.user;
+
+                showAlert('Login effettuato con successo!', 'success');
+                setTimeout(() => {
+                    showUserProfile();
+                    loadUserMatches();
+                }, 500);
+
+            } catch (error) {
+                showAlert(error.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Accedi';
+            }
+        }
+
+        // Handle register
+        async function handleRegister(e) {
+            e.preventDefault();
+            hideAlert();
+
+            const name = document.getElementById('register-name').value;
+            const surname = document.getElementById('register-surname').value;
+            const email = document.getElementById('register-email').value;
+            const phone = document.getElementById('register-phone').value;
+            const password = document.getElementById('register-password').value;
+            const confirm = document.getElementById('register-confirm').value;
+
+            if (password !== confirm) {
+                showAlert('Le password non corrispondono');
+                return;
+            }
+
+            const btn = document.getElementById('register-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loader"></span>';
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/register`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ name, surname, email, phone, password })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Registrazione fallita');
+                }
+
+                showAlert('Registrazione completata! Controlla la tua email per verificare l\'account.', 'success');
+
+                // Switch to login tab
+                setTimeout(() => {
+                    document.querySelector('[data-tab="login"]').click();
+                    document.getElementById('login-email').value = email;
+                }, 2000);
+
+            } catch (error) {
+                showAlert(error.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Registrati';
+            }
+        }
+
+        // Handle logout
+        async function handleLogout() {
+            const token = localStorage.getItem('accessToken');
+            const refreshToken = localStorage.getItem('refreshToken');
+
+            try {
+                await fetch(`${API_BASE}/auth/logout`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ refreshToken })
+                });
+            } catch (error) {
+                console.error('Logout error:', error);
+            }
+
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('refreshToken');
+            currentUser = null;
+
+            document.getElementById('user-profile').classList.remove('show');
+            document.getElementById('verification-notice').classList.remove('show');
+            document.getElementById('auth-forms').style.display = 'block';
+        }
+
+        // Resend verification email
+        async function resendVerification() {
+            const token = localStorage.getItem('accessToken');
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/resend-verification`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Invio fallito');
+                }
+
+                showAlert('Email di verifica inviata!', 'success');
+            } catch (error) {
+                showAlert(error.message);
+            }
+        }
+
+        // Check URL for verification token
+        function checkVerificationToken() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const token = urlParams.get('verify');
+
+            if (token) {
+                verifyEmail(token);
+            }
+        }
+
+        async function verifyEmail(token) {
+            try {
+                const response = await fetch(`${API_BASE}/auth/verify-email?token=${token}`);
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Verifica fallita');
+                }
+
+                // Clean URL
+                window.history.replaceState({}, document.title, window.location.pathname);
+
+                // Auto-login: save tokens and show profile
+                if (data.accessToken && data.refreshToken) {
+                    localStorage.setItem('accessToken', data.accessToken);
+                    localStorage.setItem('refreshToken', data.refreshToken);
+                    currentUser = data.user;
+
+                    showAlert('Email verificata! Benvenuto su RePlayo!', 'success');
+                    setTimeout(() => {
+                        showUserProfile();
+                        loadUserMatches();
+                    }, 1000);
+                } else {
+                    showAlert('Email verificata con successo! Ora puoi accedere.', 'success');
+                }
+            } catch (error) {
+                showAlert(error.message);
+            }
+        }
+
+        // Initialize
+        checkVerificationToken();
+        checkAuth();
+    </script>
+</body>
+</html>

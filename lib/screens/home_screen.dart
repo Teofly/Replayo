@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:html' as html;
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:glassmorphism/glassmorphism.dart';
@@ -6,10 +7,46 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import '../config/app_theme.dart';
+import '../services/user_auth_service.dart';
 import 'match_access_screen.dart';
+import 'my_videos_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final UserAuthService _authService = UserAuthService();
+  bool _isLoggedIn = false;
+  String? _userName;
+
+  @override
+  void initState() {
+    super.initState();
+    _initAuth();
+    _authService.addListener(_onAuthChanged);
+  }
+
+  @override
+  void dispose() {
+    _authService.removeListener(_onAuthChanged);
+    super.dispose();
+  }
+
+  Future<void> _initAuth() async {
+    await _authService.init();
+    _onAuthChanged();
+  }
+
+  void _onAuthChanged() {
+    setState(() {
+      _isLoggedIn = _authService.isLoggedIn;
+      _userName = _authService.userName;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -67,27 +104,34 @@ class HomeScreen extends StatelessWidget {
                           ),
                         ],
                       ),
-                      InkWell(
-                        onTap: () async {
-                          final Uri url = Uri.parse('https://administrator.teofly.it');
-                          await launchUrl(url);
-                        },
-                        borderRadius: BorderRadius.circular(15),
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: AppTheme.darkCard,
+                      Row(
+                        children: [
+                          // Login/User button (small, top right)
+                          _buildUserButtonSmall(context),
+                          const SizedBox(width: 12),
+                          InkWell(
+                            onTap: () async {
+                              final Uri url = Uri.parse('https://administrator.teofly.it');
+                              await launchUrl(url);
+                            },
                             borderRadius: BorderRadius.circular(15),
-                            border: Border.all(
-                              color: AppTheme.neonBlue.withOpacity(0.3),
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppTheme.darkCard,
+                                borderRadius: BorderRadius.circular(15),
+                                border: Border.all(
+                                  color: AppTheme.neonBlue.withOpacity(0.3),
+                                ),
+                                boxShadow: AppTheme.neonGlow(AppTheme.neonBlue),
+                              ),
+                              child: Icon(
+                                Icons.settings,
+                                color: AppTheme.neonBlue,
+                              ),
                             ),
-                            boxShadow: AppTheme.neonGlow(AppTheme.neonBlue),
                           ),
-                          child: Icon(
-                            Icons.settings,
-                            color: AppTheme.neonBlue,
-                          ),
-                        ),
+                        ],
                       ),
                     ],
                   ).animate().fadeIn(duration: 600.ms),
@@ -419,6 +463,270 @@ class HomeScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Widget _buildUserButtonSmall(BuildContext context) {
+    if (_isLoggedIn && _userName != null) {
+      final initials = _userName!.split(' ').map((n) => n.isNotEmpty ? n[0] : '').join('').toUpperCase();
+
+      return PopupMenuButton<String>(
+        onSelected: (value) {
+          if (value == 'videos') {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const MyVideosScreen()),
+            );
+          } else if (value == 'logout') {
+            _authService.logout();
+          }
+        },
+        offset: const Offset(0, 45),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        color: AppTheme.darkCard,
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: AppTheme.darkCard,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppTheme.neonPurple.withOpacity(0.5)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [AppTheme.neonBlue, AppTheme.neonPurple],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Center(
+                  child: Text(
+                    initials.length > 2 ? initials.substring(0, 2) : initials,
+                    style: GoogleFonts.rajdhani(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Icon(Icons.arrow_drop_down, color: AppTheme.neonPurple, size: 18),
+            ],
+          ),
+        ),
+        itemBuilder: (context) => [
+          PopupMenuItem<String>(
+            value: 'videos',
+            child: Row(
+              children: [
+                Icon(Icons.video_library, color: AppTheme.neonBlue, size: 18),
+                const SizedBox(width: 10),
+                Text('I Miei Video', style: GoogleFonts.rajdhani(fontSize: 14, color: Colors.white)),
+              ],
+            ),
+          ),
+          const PopupMenuDivider(),
+          PopupMenuItem<String>(
+            value: 'logout',
+            child: Row(
+              children: [
+                const Icon(Icons.logout, color: Colors.redAccent, size: 18),
+                const SizedBox(width: 10),
+                Text('Esci', style: GoogleFonts.rajdhani(fontSize: 14, color: Colors.redAccent)),
+              ],
+            ),
+          ),
+        ],
+      );
+    } else {
+      return InkWell(
+        onTap: () => _openLoginPage(context),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [AppTheme.neonBlue, AppTheme.neonPurple],
+            ),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.person, color: Colors.white, size: 18),
+              const SizedBox(width: 6),
+              Text(
+                'Accedi',
+                style: GoogleFonts.rajdhani(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+  }
+
+  Widget _buildUserButton(BuildContext context) {
+    if (_isLoggedIn && _userName != null) {
+      // User is logged in - show user menu
+      final initials = _userName!.split(' ').map((n) => n.isNotEmpty ? n[0] : '').join('').toUpperCase();
+      final displayName = _userName!.split(' ').first;
+
+      return Center(
+        child: PopupMenuButton<String>(
+          onSelected: (value) {
+            if (value == 'videos') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const MyVideosScreen()),
+              );
+            } else if (value == 'logout') {
+              _authService.logout();
+            }
+          },
+          offset: const Offset(0, 50),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          color: AppTheme.darkCard,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppTheme.darkCard,
+              borderRadius: BorderRadius.circular(25),
+              border: Border.all(color: AppTheme.neonBlue.withOpacity(0.5)),
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.neonBlue.withOpacity(0.2),
+                  blurRadius: 15,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [AppTheme.neonBlue, AppTheme.neonPurple],
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Center(
+                    child: Text(
+                      initials.length > 2 ? initials.substring(0, 2) : initials,
+                      style: GoogleFonts.rajdhani(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  displayName,
+                  style: GoogleFonts.rajdhani(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(Icons.arrow_drop_down, color: AppTheme.neonBlue, size: 24),
+              ],
+            ),
+          ),
+          itemBuilder: (context) => [
+            PopupMenuItem<String>(
+              value: 'videos',
+              child: Row(
+                children: [
+                  Icon(Icons.video_library, color: AppTheme.neonBlue, size: 20),
+                  const SizedBox(width: 12),
+                  Text(
+                    'I Miei Video',
+                    style: GoogleFonts.rajdhani(
+                      fontSize: 16,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const PopupMenuDivider(),
+            PopupMenuItem<String>(
+              value: 'logout',
+              child: Row(
+                children: [
+                  const Icon(Icons.logout, color: Colors.redAccent, size: 20),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Esci',
+                    style: GoogleFonts.rajdhani(
+                      fontSize: 16,
+                      color: Colors.redAccent,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      // User is not logged in - show login button
+      return Center(
+        child: GestureDetector(
+          onTap: () => _openLoginPage(context),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [AppTheme.neonBlue, AppTheme.neonPurple],
+              ),
+              borderRadius: BorderRadius.circular(25),
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.neonBlue.withOpacity(0.4),
+                  blurRadius: 15,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.person, color: Colors.white, size: 22),
+                const SizedBox(width: 10),
+                Text(
+                  'Accedi',
+                  style: GoogleFonts.rajdhani(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _openLoginPage(BuildContext context) async {
+    // Navigate in same window on web
+    html.window.location.href = 'https://api.teofly.it/login.html';
   }
 
   Future<void> _openAdminDashboard(BuildContext context) async {

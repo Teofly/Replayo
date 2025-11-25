@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RePlayo - I Miei Video</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .logo h1 {
+            color: #fff;
+            font-size: 1.8rem;
+            font-weight: 700;
+            letter-spacing: -1px;
+        }
+
+        .logo h1 span {
+            color: #00d9ff;
+        }
+
+        .back-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: rgba(255,255,255,0.7);
+            text-decoration: none;
+            font-size: 0.9rem;
+            padding: 10px 16px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            transition: all 0.3s ease;
+        }
+
+        .back-btn:hover {
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+        }
+
+        .user-info {
+            background: rgba(255,255,255,0.05);
+            backdrop-filter: blur(20px);
+            border-radius: 16px;
+            padding: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .user-details {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .user-avatar {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, #00d9ff 0%, #00b4d8 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: 700;
+            color: #1a1a2e;
+        }
+
+        .user-name {
+            color: #fff;
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .user-email {
+            color: rgba(255,255,255,0.5);
+            font-size: 0.85rem;
+        }
+
+        .logout-btn {
+            color: #ff6b6b;
+            background: rgba(255,107,107,0.1);
+            border: 1px solid rgba(255,107,107,0.3);
+            padding: 10px 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        .logout-btn:hover {
+            background: rgba(255,107,107,0.2);
+        }
+
+        .page-title {
+            color: #fff;
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .matches-grid {
+            display: grid;
+            gap: 16px;
+        }
+
+        .match-card {
+            background: rgba(255,255,255,0.05);
+            backdrop-filter: blur(20px);
+            border-radius: 16px;
+            padding: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .match-card:hover {
+            background: rgba(255,255,255,0.08);
+            border-color: rgba(0,217,255,0.3);
+            transform: translateY(-2px);
+        }
+
+        .match-card.no-videos {
+            opacity: 0.6;
+            cursor: default;
+        }
+
+        .match-card.no-videos:hover {
+            transform: none;
+            background: rgba(255,255,255,0.05);
+            border-color: rgba(255,255,255,0.1);
+        }
+
+        .sport-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            flex-shrink: 0;
+        }
+
+        .sport-icon.padel { background: rgba(0,217,255,0.2); }
+        .sport-icon.tennis { background: rgba(138,43,226,0.2); }
+        .sport-icon.calcetto { background: rgba(0,200,83,0.2); }
+
+        .match-info {
+            flex: 1;
+        }
+
+        .match-sport {
+            color: #00d9ff;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .match-court {
+            color: #fff;
+            font-size: 1.1rem;
+            font-weight: 500;
+            margin-top: 4px;
+        }
+
+        .match-date {
+            color: rgba(255,255,255,0.5);
+            font-size: 0.9rem;
+            margin-top: 4px;
+        }
+
+        .video-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .video-badge.has-videos {
+            background: rgba(0,200,83,0.2);
+            color: #00c853;
+        }
+
+        .video-badge.no-videos {
+            background: rgba(255,255,255,0.1);
+            color: rgba(255,255,255,0.4);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 16px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .empty-state svg {
+            width: 80px;
+            height: 80px;
+            color: rgba(255,255,255,0.2);
+            margin-bottom: 20px;
+        }
+
+        .empty-state h3 {
+            color: #fff;
+            font-size: 1.3rem;
+            margin-bottom: 10px;
+        }
+
+        .empty-state p {
+            color: rgba(255,255,255,0.5);
+            font-size: 0.95rem;
+            max-width: 300px;
+            margin: 0 auto;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 60px 20px;
+            color: rgba(255,255,255,0.5);
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(0,217,255,0.2);
+            border-top-color: #00d9ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .login-required {
+            text-align: center;
+            padding: 60px 20px;
+        }
+
+        .login-required h3 {
+            color: #fff;
+            margin-bottom: 15px;
+        }
+
+        .login-required p {
+            color: rgba(255,255,255,0.5);
+            margin-bottom: 20px;
+        }
+
+        .login-link {
+            display: inline-block;
+            padding: 12px 30px;
+            background: linear-gradient(135deg, #00d9ff 0%, #00b4d8 100%);
+            color: #1a1a2e;
+            text-decoration: none;
+            border-radius: 12px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .login-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(0,217,255,0.3);
+        }
+
+        .arrow-icon {
+            color: #00d9ff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">
+                <h1>Re<span>Playo</span></h1>
+            </div>
+            <a href="https://replayo.teofly.it" class="back-btn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+                </svg>
+                Torna all'App
+            </a>
+        </div>
+
+        <div id="userInfoSection" class="user-info" style="display: none;">
+            <div class="user-details">
+                <div class="user-avatar" id="userAvatar">U</div>
+                <div>
+                    <div class="user-name" id="userName">Utente</div>
+                    <div class="user-email" id="userEmail">email@esempio.com</div>
+                </div>
+            </div>
+            <button class="logout-btn" onclick="handleLogout()">Esci</button>
+        </div>
+
+        <h2 class="page-title">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="#00d9ff">
+                <path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/>
+            </svg>
+            I Miei Video
+        </h2>
+
+        <div id="loginRequired" class="login-required" style="display: none;">
+            <h3>Accedi per vedere i tuoi video</h3>
+            <p>Devi effettuare l'accesso per visualizzare i video delle tue partite.</p>
+            <a href="login.html" class="login-link">Accedi</a>
+        </div>
+
+        <div id="loadingState" class="loading">
+            <div class="loading-spinner"></div>
+            <p>Caricamento partite...</p>
+        </div>
+
+        <div id="emptyState" class="empty-state" style="display: none;">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4zm-6.75 11.25L10 14l-2.25 3h8.5L14 14l-1.75 2.25-1-1z"/>
+            </svg>
+            <h3>Nessun video disponibile</h3>
+            <p>I video delle tue partite appariranno qui dopo aver giocato.</p>
+        </div>
+
+        <div id="matchesGrid" class="matches-grid"></div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin + '/api';
+
+        async function init() {
+            const token = localStorage.getItem('accessToken');
+            const userName = localStorage.getItem('userName');
+            const userEmail = localStorage.getItem('userEmail');
+
+            if (!token) {
+                document.getElementById('loadingState').style.display = 'none';
+                document.getElementById('loginRequired').style.display = 'block';
+                return;
+            }
+
+            // Show user info
+            document.getElementById('userInfoSection').style.display = 'flex';
+            document.getElementById('userName').textContent = userName || 'Utente';
+            document.getElementById('userEmail').textContent = userEmail || '';
+            const initials = (userName || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+            document.getElementById('userAvatar').textContent = initials;
+
+            // Load matches
+            await loadMatches();
+        }
+
+        async function loadMatches() {
+            const token = localStorage.getItem('accessToken');
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/my-matches`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                const data = await response.json();
+
+                document.getElementById('loadingState').style.display = 'none';
+
+                if (!data.success || !data.matches || data.matches.length === 0) {
+                    document.getElementById('emptyState').style.display = 'block';
+                    return;
+                }
+
+                renderMatches(data.matches);
+
+            } catch (error) {
+                console.error('Error loading matches:', error);
+                document.getElementById('loadingState').style.display = 'none';
+                document.getElementById('emptyState').style.display = 'block';
+            }
+        }
+
+        function renderMatches(matches) {
+            const grid = document.getElementById('matchesGrid');
+
+            grid.innerHTML = matches.map(match => {
+                const sportType = (match.sport_type || 'sport').toLowerCase();
+                const sportIcon = getSportIcon(sportType);
+                const videoCount = match.video_count || 0;
+                const hasVideos = videoCount > 0;
+
+                // Format date
+                let formattedDate = match.match_date || '';
+                try {
+                    if (match.match_date) {
+                        const date = new Date(match.match_date);
+                        formattedDate = date.toLocaleDateString('it-IT', {
+                            weekday: 'long',
+                            day: 'numeric',
+                            month: 'long',
+                            year: 'numeric'
+                        });
+                    }
+                } catch (e) {}
+
+                const startTime = match.start_time ? ` - ${match.start_time}` : '';
+
+                return `
+                    <div class="match-card ${!hasVideos ? 'no-videos' : ''}" ${hasVideos ? `onclick="openMatch('${match.id}', '${match.booking_code}')"` : ''}>
+                        <div class="sport-icon ${sportType}">
+                            ${sportIcon}
+                        </div>
+                        <div class="match-info">
+                            <div class="match-sport">${sportType}</div>
+                            <div class="match-court">${match.court_name || 'Campo'}</div>
+                            <div class="match-date">${formattedDate}${startTime}</div>
+                        </div>
+                        <div class="video-badge ${hasVideos ? 'has-videos' : 'no-videos'}">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/>
+                            </svg>
+                            ${videoCount} video
+                        </div>
+                        ${hasVideos ? '<svg class="arrow-icon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>' : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function getSportIcon(sport) {
+            switch(sport) {
+                case 'padel':
+                case 'tennis':
+                    return '<svg width="28" height="28" viewBox="0 0 24 24" fill="#00d9ff"><path d="M19.52 2.49c-2.34-2.34-6.62-1.87-9.55 1.06-1.6 1.6-2.52 3.87-2.54 5.46-.02 1.58.26 3.89-1.35 5.5l-4.24 4.24 1.42 1.42 4.24-4.24c1.61-1.61 3.92-1.33 5.5-1.35s3.86-.94 5.46-2.54c2.92-2.93 3.4-7.21 1.06-9.55zm-9.2 9.19c-1.53-1.53-1.05-4.61 1.06-6.72s5.18-2.59 6.72-1.06c1.53 1.53 1.05 4.61-1.06 6.72s-5.18 2.59-6.72 1.06z"/></svg>';
+                case 'calcetto':
+                    return '<svg width="28" height="28" viewBox="0 0 24 24" fill="#00c853"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4" stroke="currentColor" stroke-width="2"/></svg>';
+                default:
+                    return '<svg width="28" height="28" viewBox="0 0 24 24" fill="#888"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/></svg>';
+            }
+        }
+
+        function openMatch(matchId, bookingCode) {
+            // Redirect to match videos page or show videos in modal
+            // For now, open replayo app with the match
+            window.location.href = `https://replayo.teofly.it/#/match/${matchId}`;
+        }
+
+        async function handleLogout() {
+            const token = localStorage.getItem('accessToken');
+            const refreshToken = localStorage.getItem('refreshToken');
+
+            try {
+                await fetch(`${API_BASE}/auth/logout`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ refreshToken })
+                });
+            } catch (e) {
+                console.log('Logout error:', e);
+            }
+
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('refreshToken');
+            localStorage.removeItem('userName');
+            localStorage.removeItem('userEmail');
+
+            window.location.href = 'login.html';
+        }
+
+        init();
+    </script>
+</body>
+</html>

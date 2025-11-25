@@ -1897,14 +1897,176 @@ body {
         max-width: 100%;
         overflow-x: hidden;
     }
-    
+
     .chart-container {
         max-width: 100%;
         overflow: hidden;
     }
-    
+
     .chart-container canvas {
         width: 100% !important;
         max-width: 100%;
     }
+}
+
+/* Autocomplete dropdown for users search */
+.autocomplete-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--bg-card);
+    border: 1px solid rgba(0, 255, 245, 0.2);
+    border-radius: 8px;
+    max-height: 300px;
+    overflow-y: auto;
+    z-index: 1000;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    margin-top: 4px;
+}
+
+.autocomplete-item {
+    padding: 12px 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid rgba(0, 255, 245, 0.1);
+    transition: background 0.2s;
+}
+
+.autocomplete-item:last-child {
+    border-bottom: none;
+}
+
+.autocomplete-item:hover,
+.autocomplete-item.selected {
+    background: rgba(0, 255, 245, 0.15);
+}
+
+.autocomplete-item .user-avatar-sm {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--bg-dark);
+    font-weight: bold;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.autocomplete-item .user-info-ac {
+    flex: 1;
+    min-width: 0;
+}
+
+.autocomplete-item .user-name-ac {
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.autocomplete-item .user-email-ac {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.autocomplete-item .user-code-ac {
+    background: rgba(0, 255, 245, 0.15);
+    color: var(--accent-primary);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-family: monospace;
+}
+
+.autocomplete-item .user-status-ac {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+
+.autocomplete-item .user-status-ac.verified {
+    background: rgba(0, 255, 136, 0.2);
+    color: var(--success);
+}
+
+.autocomplete-item .user-status-ac.pending {
+    background: rgba(255, 170, 0, 0.2);
+    color: var(--warning);
+}
+
+/* Users search input - dark theme */
+#users-search {
+    width: 100%;
+    padding: 0.875rem 1rem;
+    font-size: 1rem;
+    background: var(--bg-dark);
+    border: 1px solid rgba(0, 255, 245, 0.2);
+    border-radius: 8px;
+    color: var(--text-primary);
+    transition: all 0.3s ease;
+}
+
+#users-search:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 15px rgba(0, 255, 245, 0.3);
+}
+
+#users-search::placeholder {
+    color: var(--text-secondary);
+}
+
+/* Players search input - dark theme */
+#player-search {
+    width: 100%;
+    padding: 0.875rem 1rem;
+    font-size: 1rem;
+    background: var(--bg-dark);
+    border: 1px solid rgba(0, 255, 245, 0.2);
+    border-radius: 8px;
+    color: var(--text-primary);
+    transition: all 0.3s ease;
+}
+
+#player-search:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 15px rgba(0, 255, 245, 0.3);
+}
+
+#player-search::placeholder {
+    color: var(--text-secondary);
+}
+
+/* Filter select - dark theme */
+#users-filter-verified {
+    padding: 0.875rem 1rem;
+    font-size: 1rem;
+    background: var(--bg-dark);
+    border: 1px solid rgba(0, 255, 245, 0.2);
+    border-radius: 8px;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+#users-filter-verified:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 15px rgba(0, 255, 245, 0.3);
+}
+
+#users-filter-verified option {
+    background: var(--bg-card);
+    color: var(--text-primary);
 }

@@ -1473,13 +1473,13 @@ function setupModals() {
     // Player form submit
     document.getElementById('player-form')?.addEventListener('submit', handlePlayerSubmit);
 
-    // Player search
-    document.getElementById('player-search')?.addEventListener('input', (e) => {
-        clearTimeout(window.playerSearchTimeout);
-        window.playerSearchTimeout = setTimeout(() => {
-            loadPlayers(e.target.value);
-        }, 300);
-    });
+    // Player search - now handled by onPlayerSearchInput() with autocomplete
+    // document.getElementById('player-search')?.addEventListener('input', (e) => {
+    //     clearTimeout(window.playerSearchTimeout);
+    //     window.playerSearchTimeout = setTimeout(() => {
+    //         loadPlayers(e.target.value);
+    //     }, 300);
+    // });
 
     // Close video modal
     document.getElementById('close-video-modal')?.addEventListener('click', () => {
@@ -3669,6 +3669,607 @@ document.addEventListener('DOMContentLoaded', () => {
             if (item.dataset.page === 'club-images') {
                 setTimeout(loadClubImages, 100);
             }
+            if (item.dataset.page === 'settings') {
+                setTimeout(loadSmtpSettings, 100);
+            }
+            if (item.dataset.page === 'users') {
+                setTimeout(() => { loadUsers(); loadUsersStats(); }, 100);
+            }
         });
     });
 });
+
+// ==================== USERS MANAGEMENT ====================
+
+let usersAutocompleteData = [];
+let usersAutocompleteIndex = -1;
+let usersSearchTimeout = null;
+
+async function loadUsersStats() {
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/admin/users-stats`);
+        const data = await response.json();
+
+        if (data.success) {
+            document.getElementById('users-total').textContent = data.stats.total || 0;
+            document.getElementById('users-verified').textContent = data.stats.verified || 0;
+            document.getElementById('users-pending').textContent = data.stats.pending || 0;
+            document.getElementById('users-inactive').textContent = data.stats.inactive || 0;
+        }
+    } catch (error) {
+        console.error('Error loading users stats:', error);
+    }
+}
+
+// Autocomplete search functions
+function onUsersSearchInput() {
+    clearTimeout(usersSearchTimeout);
+    const search = document.getElementById('users-search').value;
+
+    if (search.length < 1) {
+        hideUsersAutocomplete();
+        loadUsers();
+        return;
+    }
+
+    usersSearchTimeout = setTimeout(() => {
+        searchUsersAutocomplete(search);
+    }, 200);
+}
+
+async function searchUsersAutocomplete(search) {
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/admin/users?search=${encodeURIComponent(search)}`);
+        const data = await response.json();
+
+        if (data.success && data.users) {
+            usersAutocompleteData = data.users;
+            showUsersAutocomplete(data.users);
+        }
+    } catch (error) {
+        console.error('Autocomplete error:', error);
+    }
+}
+
+function showUsersAutocomplete(users) {
+    const dropdown = document.getElementById('users-autocomplete');
+
+    if (users.length === 0) {
+        dropdown.innerHTML = '<div class="autocomplete-item" style="color: #888;">Nessun utente trovato</div>';
+        dropdown.style.display = 'block';
+        return;
+    }
+
+    dropdown.innerHTML = users.slice(0, 10).map((user, index) => `
+        <div class="autocomplete-item ${index === usersAutocompleteIndex ? 'selected' : ''}"
+             onclick="selectUserFromAutocomplete(${index})"
+             data-index="${index}">
+            <div class="user-avatar-sm">${(user.name || 'U').charAt(0).toUpperCase()}</div>
+            <div class="user-info-ac">
+                <div class="user-name-ac">${user.name || '-'}</div>
+                <div class="user-email-ac">${user.email}</div>
+            </div>
+            <span class="user-code-ac">${user.userCode || '-'}</span>
+            <span class="user-status-ac ${user.emailVerified ? 'verified' : 'pending'}">
+                ${user.emailVerified ? 'Verificato' : 'In attesa'}
+            </span>
+        </div>
+    `).join('');
+
+    dropdown.style.display = 'block';
+    usersAutocompleteIndex = -1;
+}
+
+function hideUsersAutocomplete() {
+    const dropdown = document.getElementById('users-autocomplete');
+    if (dropdown) {
+        dropdown.style.display = 'none';
+    }
+    usersAutocompleteIndex = -1;
+}
+
+function selectUserFromAutocomplete(index) {
+    const user = usersAutocompleteData[index];
+    if (user) {
+        document.getElementById('users-search').value = user.email;
+        hideUsersAutocomplete();
+        loadUsers();
+    }
+}
+
+function onUsersSearchKeydown(event) {
+    const dropdown = document.getElementById('users-autocomplete');
+    const items = dropdown.querySelectorAll('.autocomplete-item[data-index]');
+
+    if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        usersAutocompleteIndex = Math.min(usersAutocompleteIndex + 1, items.length - 1);
+        updateUsersAutocompleteSelection(items);
+    } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        usersAutocompleteIndex = Math.max(usersAutocompleteIndex - 1, 0);
+        updateUsersAutocompleteSelection(items);
+    } else if (event.key === 'Enter') {
+        event.preventDefault();
+        if (usersAutocompleteIndex >= 0 && usersAutocompleteData[usersAutocompleteIndex]) {
+            selectUserFromAutocomplete(usersAutocompleteIndex);
+        } else {
+            hideUsersAutocomplete();
+            loadUsers();
+        }
+    } else if (event.key === 'Escape') {
+        hideUsersAutocomplete();
+    }
+}
+
+function updateUsersAutocompleteSelection(items) {
+    items.forEach((item, i) => {
+        item.classList.toggle('selected', i === usersAutocompleteIndex);
+    });
+
+    // Scroll selected into view
+    if (usersAutocompleteIndex >= 0 && items[usersAutocompleteIndex]) {
+        items[usersAutocompleteIndex].scrollIntoView({ block: 'nearest' });
+    }
+}
+
+// Close autocomplete when clicking outside
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('#users-search') && !e.target.closest('#users-autocomplete')) {
+        hideUsersAutocomplete();
+    }
+    if (!e.target.closest('#player-search') && !e.target.closest('#players-autocomplete')) {
+        hidePlayersAutocomplete();
+    }
+});
+
+// ==================== PLAYERS AUTOCOMPLETE ====================
+
+let playersAutocompleteData = [];
+let playersAutocompleteIndex = -1;
+let playersSearchTimeout = null;
+
+function onPlayerSearchInput() {
+    clearTimeout(playersSearchTimeout);
+    const search = document.getElementById('player-search').value.trim();
+
+    if (search.length < 1) {
+        hidePlayersAutocomplete();
+        loadPlayers();
+        return;
+    }
+
+    // API requires at least 2 chars
+    if (search.length < 2) {
+        const dropdown = document.getElementById('players-autocomplete');
+        dropdown.innerHTML = '<div class="autocomplete-item" style="color: #888;">Digita almeno 2 caratteri...</div>';
+        dropdown.style.display = 'block';
+        return;
+    }
+
+    playersSearchTimeout = setTimeout(() => {
+        searchPlayersAutocomplete(search);
+    }, 150);
+}
+
+async function searchPlayersAutocomplete(search) {
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/players/search?q=${encodeURIComponent(search)}`);
+        const data = await response.json();
+
+        // API returns { players: [...] } without success field
+        if (data.players) {
+            playersAutocompleteData = data.players;
+            showPlayersAutocomplete(data.players);
+        }
+    } catch (error) {
+        console.error('Players autocomplete error:', error);
+        hidePlayersAutocomplete();
+    }
+}
+
+function showPlayersAutocomplete(players) {
+    const dropdown = document.getElementById('players-autocomplete');
+
+    if (players.length === 0) {
+        dropdown.innerHTML = '<div class="autocomplete-item" style="color: #888;">Nessun giocatore trovato</div>';
+        dropdown.style.display = 'block';
+        return;
+    }
+
+    dropdown.innerHTML = players.slice(0, 10).map((player, index) => `
+        <div class="autocomplete-item ${index === playersAutocompleteIndex ? 'selected' : ''}"
+             onclick="selectPlayerFromAutocomplete(${index})"
+             data-index="${index}">
+            <div class="user-avatar-sm">${((player.first_name || 'G').charAt(0) + (player.last_name || '').charAt(0)).toUpperCase()}</div>
+            <div class="user-info-ac">
+                <div class="user-name-ac">${player.first_name || ''} ${player.last_name || ''}</div>
+                <div class="user-email-ac">${player.email || player.phone || '-'}</div>
+            </div>
+        </div>
+    `).join('');
+
+    dropdown.style.display = 'block';
+    playersAutocompleteIndex = -1;
+}
+
+function hidePlayersAutocomplete() {
+    const dropdown = document.getElementById('players-autocomplete');
+    if (dropdown) {
+        dropdown.style.display = 'none';
+    }
+    playersAutocompleteIndex = -1;
+}
+
+function selectPlayerFromAutocomplete(index) {
+    const player = playersAutocompleteData[index];
+    if (player) {
+        const fullName = `${player.first_name || ''} ${player.last_name || ''}`.trim();
+        document.getElementById('player-search').value = fullName;
+        hidePlayersAutocomplete();
+        loadPlayers(fullName);
+    }
+}
+
+function onPlayerSearchKeydown(event) {
+    const dropdown = document.getElementById('players-autocomplete');
+    const items = dropdown.querySelectorAll('.autocomplete-item[data-index]');
+
+    if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        playersAutocompleteIndex = Math.min(playersAutocompleteIndex + 1, items.length - 1);
+        updatePlayersAutocompleteSelection(items);
+    } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        playersAutocompleteIndex = Math.max(playersAutocompleteIndex - 1, 0);
+        updatePlayersAutocompleteSelection(items);
+    } else if (event.key === 'Enter') {
+        event.preventDefault();
+        if (playersAutocompleteIndex >= 0 && playersAutocompleteData[playersAutocompleteIndex]) {
+            selectPlayerFromAutocomplete(playersAutocompleteIndex);
+        } else {
+            hidePlayersAutocomplete();
+            loadPlayers(document.getElementById('player-search').value);
+        }
+    } else if (event.key === 'Escape') {
+        hidePlayersAutocomplete();
+    }
+}
+
+function updatePlayersAutocompleteSelection(items) {
+    items.forEach((item, i) => {
+        item.classList.toggle('selected', i === playersAutocompleteIndex);
+    });
+
+    // Scroll selected into view
+    if (playersAutocompleteIndex >= 0 && items[playersAutocompleteIndex]) {
+        items[playersAutocompleteIndex].scrollIntoView({ block: 'nearest' });
+    }
+}
+
+async function loadUsers() {
+    const search = document.getElementById('users-search')?.value || '';
+    const verified = document.getElementById('users-filter-verified')?.value || '';
+
+    let url = `${API_BASE_URL}/admin/users?`;
+    if (search) url += `search=${encodeURIComponent(search)}&`;
+    if (verified) url += `verified=${verified}&`;
+
+    try {
+        const response = await apiFetch(url);
+        const data = await response.json();
+
+        const tbody = document.getElementById('users-table-body');
+
+        if (!data.success || !data.users || data.users.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem; color: #888;">Nessun utente trovato</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = data.users.map(user => `
+            <tr>
+                <td>
+                    <div class="user-cell">
+                        <div class="user-avatar">${(user.name || 'U').charAt(0).toUpperCase()}</div>
+                        <div class="user-info">
+                            <div class="user-name">${user.name || '-'}</div>
+                            <div class="user-phone">${user.phone_number || ''}</div>
+                        </div>
+                    </div>
+                </td>
+                <td style="color: #ccc;">${user.email}</td>
+                <td><span class="user-code">${user.userCode || '-'}</span></td>
+                <td>
+                    <span class="status-badge ${user.emailVerified ? 'status-verified' : 'status-pending'}">
+                        ${user.emailVerified ? 'Verificato' : 'In attesa'}
+                    </span>
+                    ${!user.isActive ? '<div class="status-badge status-inactive">Disattivato</div>' : ''}
+                </td>
+                <td style="font-size: 0.85rem; color: #888;">${formatDateTimeUsers(user.createdAt)}</td>
+                <td>
+                    <div class="actions-cell">
+                        <div class="actions-row">
+                            <button class="btn btn-sm btn-info btn-action" onclick="editUser('${user.id}')">Modifica</button>
+                            <button class="btn btn-sm ${user.isActive ? 'btn-secondary' : 'btn-success'} btn-action" onclick="toggleUserActive('${user.id}', ${user.isActive})">
+                                ${user.isActive ? 'Disattiva' : 'Attiva'}
+                            </button>
+                        </div>
+                        <div class="actions-row">
+                            ${!user.emailVerified ? `<button class="btn btn-sm btn-primary btn-action" onclick="sendVerificationEmail('${user.id}')">Email</button>` : ''}
+                            ${!user.emailVerified ? `<button class="btn btn-sm btn-success btn-action" onclick="verifyUserManually('${user.id}')">Verifica</button>` : ''}
+                            <button class="btn btn-sm btn-danger btn-action" onclick="deleteUser('${user.id}', '${user.email}')">Elimina</button>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+
+    } catch (error) {
+        console.error('Error loading users:', error);
+        document.getElementById('users-table-body').innerHTML =
+            '<tr><td colspan="6" style="text-align: center; padding: 2rem; color: #f44336;">Errore caricamento utenti</td></tr>';
+    }
+}
+
+async function sendVerificationEmail(userId) {
+    if (!confirm('Inviare email di verifica?')) return;
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/admin/users/${userId}/send-verification`, {
+            method: 'POST'
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            alert('Email di verifica inviata!');
+        } else {
+            alert('Errore: ' + (data.error || 'Invio fallito'));
+        }
+    } catch (error) {
+        alert('Errore: ' + error.message);
+    }
+}
+
+async function verifyUserManually(userId) {
+    if (!confirm('Verificare manualmente questo utente?')) return;
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/admin/users/${userId}/verify-email`, {
+            method: 'POST'
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            alert('Utente verificato!');
+            loadUsers();
+            loadUsersStats();
+        } else {
+            alert('Errore: ' + (data.error || 'Verifica fallita'));
+        }
+    } catch (error) {
+        alert('Errore: ' + error.message);
+    }
+}
+
+async function toggleUserActive(userId, currentActive) {
+    const action = currentActive ? 'disattivare' : 'attivare';
+    if (!confirm(`Vuoi ${action} questo utente?`)) return;
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/admin/users/${userId}/toggle-active`, {
+            method: 'POST'
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            loadUsers();
+            loadUsersStats();
+        } else {
+            alert('Errore: ' + (data.error || 'Operazione fallita'));
+        }
+    } catch (error) {
+        alert('Errore: ' + error.message);
+    }
+}
+
+async function deleteUser(userId, email) {
+    if (!confirm(`Eliminare definitivamente l'utente ${email}?`)) return;
+    if (!confirm('Questa azione e irreversibile. Confermi?')) return;
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/admin/users/${userId}`, {
+            method: 'DELETE'
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            alert('Utente eliminato');
+            loadUsers();
+            loadUsersStats();
+        } else {
+            alert('Errore: ' + (data.error || 'Eliminazione fallita'));
+        }
+    } catch (error) {
+        alert('Errore: ' + error.message);
+    }
+}
+
+// Edit user modal
+let editingUserId = null;
+
+async function editUser(userId) {
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/admin/users/${userId}`);
+        const data = await response.json();
+
+        if (!data.success || !data.user) {
+            alert('Errore: Utente non trovato');
+            return;
+        }
+
+        const user = data.user;
+        editingUserId = userId;
+
+        document.getElementById('edit-user-name').value = user.name || '';
+        document.getElementById('edit-user-email').value = user.email || '';
+        document.getElementById('edit-user-phone').value = user.phone || '';
+
+        document.getElementById('edit-user-modal').style.display = 'flex';
+    } catch (error) {
+        alert('Errore: ' + error.message);
+    }
+}
+
+function closeEditUserModal() {
+    document.getElementById('edit-user-modal').style.display = 'none';
+    editingUserId = null;
+}
+
+async function saveUserEdit() {
+    if (!editingUserId) return;
+
+    const name = document.getElementById('edit-user-name').value.trim();
+    const email = document.getElementById('edit-user-email').value.trim();
+    const phone = document.getElementById('edit-user-phone').value.trim();
+
+    if (!name) {
+        alert('Il nome è obbligatorio');
+        return;
+    }
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/admin/users/${editingUserId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, email, phone })
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            closeEditUserModal();
+            loadUsers();
+            alert('Utente aggiornato');
+        } else {
+            alert('Errore: ' + (data.error || 'Aggiornamento fallito'));
+        }
+    } catch (error) {
+        alert('Errore: ' + error.message);
+    }
+}
+
+function formatDateTimeUsers(dateStr) {
+    if (!dateStr) return '-';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('it-IT', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+// ==================== SMTP SETTINGS ====================
+
+async function loadSmtpSettings() {
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/settings/smtp`);
+        const data = await response.json();
+
+        if (data.success && data.settings) {
+            document.getElementById('smtp-host').value = data.settings.host || '';
+            document.getElementById('smtp-port').value = data.settings.port || '';
+            document.getElementById('smtp-secure').value = data.settings.secure ? 'true' : 'false';
+            document.getElementById('smtp-user').value = data.settings.user || '';
+            document.getElementById('smtp-from').value = data.settings.from || '';
+            document.getElementById('smtp-from-name').value = data.settings.fromName || '';
+            // Password is not returned for security
+        }
+    } catch (error) {
+        console.error('Error loading SMTP settings:', error);
+    }
+}
+
+async function saveSmtpSettings(event) {
+    event.preventDefault();
+
+    const settings = {
+        host: document.getElementById('smtp-host').value,
+        port: parseInt(document.getElementById('smtp-port').value) || 587,
+        secure: document.getElementById('smtp-secure').value === 'true',
+        user: document.getElementById('smtp-user').value,
+        pass: document.getElementById('smtp-pass').value,
+        from: document.getElementById('smtp-from').value,
+        fromName: document.getElementById('smtp-from-name').value
+    };
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/settings/smtp`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(settings)
+        });
+
+        const data = await response.json();
+
+        const statusEl = document.getElementById('smtp-status');
+        statusEl.style.display = 'block';
+
+        if (data.success) {
+            statusEl.innerHTML = '<p style="color: #4caf50;">✅ Impostazioni SMTP salvate con successo!</p>';
+            document.getElementById('smtp-pass').value = ''; // Clear password field
+        } else {
+            statusEl.innerHTML = `<p style="color: #f44336;">❌ Errore: ${data.error}</p>`;
+        }
+    } catch (error) {
+        const statusEl = document.getElementById('smtp-status');
+        statusEl.style.display = 'block';
+        statusEl.innerHTML = `<p style="color: #f44336;">❌ Errore di connessione: ${error.message}</p>`;
+    }
+}
+
+async function testSmtpConnection() {
+    const statusEl = document.getElementById('smtp-status');
+    statusEl.style.display = 'block';
+    statusEl.innerHTML = '<p style="color: #00d9ff;">⏳ Test connessione in corso...</p>';
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/settings/smtp/test`);
+        const data = await response.json();
+
+        if (data.success) {
+            statusEl.innerHTML = '<p style="color: #4caf50;">✅ Connessione SMTP riuscita!</p>';
+        } else {
+            statusEl.innerHTML = `<p style="color: #f44336;">❌ Connessione fallita: ${data.error}</p>`;
+        }
+    } catch (error) {
+        statusEl.innerHTML = `<p style="color: #f44336;">❌ Errore: ${error.message}</p>`;
+    }
+}
+
+async function sendTestEmail() {
+    const email = prompt('Inserisci indirizzo email per il test:');
+    if (!email) return;
+
+    const statusEl = document.getElementById('smtp-status');
+    statusEl.style.display = 'block';
+    statusEl.innerHTML = '<p style="color: #00d9ff;">⏳ Invio email di test in corso...</p>';
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/settings/smtp/send-test`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            statusEl.innerHTML = `<p style="color: #4caf50;">✅ Email di test inviata a ${email}!</p>`;
+        } else {
+            statusEl.innerHTML = `<p style="color: #f44336;">❌ Invio fallito: ${data.error}</p>`;
+        }
+    } catch (error) {
+        statusEl.innerHTML = `<p style="color: #f44336;">❌ Errore: ${error.message}</p>`;
+    }
+}

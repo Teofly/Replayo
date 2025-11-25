@@ -9,6 +9,7 @@ const axios = require('axios');
 const ffmpeg = require('fluent-ffmpeg');
 const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl} = require('@aws-sdk/s3-request-presigner');
+const { setupAuthRoutes } = require('./auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -35,6 +36,9 @@ const S3_BUCKET = process.env.S3_BUCKET || 'replayo-videos';
 app.use(cors());
 app.use(express.json());
 
+// Serve static files from public folder (login page, etc.)
+app.use(express.static(path.join(__dirname, 'public')));
+
 // Basic Auth middleware
 const ADMIN_USER = process.env.ADMIN_USER || 'demo';
 const ADMIN_PASS = process.env.ADMIN_PASS || 'demo';
@@ -49,6 +53,14 @@ function basicAuth(req, res, next) {
     '/bookings/availability',  // Public: slot disponibili per prenotazione
     '/courts',                 // Public: lista campi
     '/club/images',            // Public: immagini club
+    '/auth/register',          // Public: registrazione utenti
+    '/auth/login',             // Public: login utenti
+    '/auth/verify-email',      // Public: verifica email
+    '/auth/refresh',           // Public: refresh token
+    '/auth/resend-verification', // Public: reinvia email verifica
+    '/auth/me',                // Public: profilo utente (usa JWT, non Basic)
+    '/auth/my-matches',        // Public: partite utente (usa JWT, non Basic)
+    '/auth/logout',            // Public: logout utente
   ];
   // Also allow video streaming, download and view endpoints
   // And POST /bookings for user booking requests (will be pending status)
@@ -1600,11 +1612,319 @@ app.delete('/api/club/images/:filename', async (req, res) => {
   }
 });
 
+// Setup authentication routes
+setupAuthRoutes(app, pool);
+console.log('🔐 Auth system loaded');
+
 // Start server
 app.listen(PORT, () => {
   console.log(`🚀 RePlayo API server running on http://localhost:${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
   console.log(`📦 Storage: ${STORAGE_TYPE === 's3' ? `S3 (${S3_BUCKET})` : `Local (${LOCAL_STORAGE_PATH})`}`);
+});
+
+// ==================== ADMIN USERS API ====================
+
+// GET /api/admin/users - Lista utenti (admin only)
+app.get('/api/admin/users', async (req, res) => {
+  try {
+    const { search, verified, active } = req.query;
+
+    let query = `
+      SELECT u.id, u.name, u.email, u.phone_number, u.user_code,
+             u.email_verified, u.is_active, u.created_at, u.last_login,
+             u.social_provider, u.avatar_url, u.player_id,
+             p.first_name || ' ' || p.last_name as player_name
+      FROM users u
+      LEFT JOIN players p ON u.player_id = p.id
+      WHERE 1=1
+    `;
+    const params = [];
+    let paramCount = 0;
+
+    if (search) {
+      paramCount++;
+      query += ` AND (u.name ILIKE $${paramCount} OR u.email ILIKE $${paramCount} OR u.user_code ILIKE $${paramCount})`;
+      params.push(`%${search}%`);
+    }
+
+    if (verified !== undefined) {
+      paramCount++;
+      query += ` AND u.email_verified = $${paramCount}`;
+      params.push(verified === 'true');
+    }
+
+    if (active !== undefined) {
+      paramCount++;
+      query += ` AND u.is_active = $${paramCount}`;
+      params.push(active === 'true');
+    }
+
+    query += ' ORDER BY u.created_at DESC';
+
+    const result = await pool.query(query, params);
+
+    res.json({
+      success: true,
+      users: result.rows.map(u => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        phone: u.phone_number,
+        userCode: u.user_code,
+        emailVerified: u.email_verified,
+        isActive: u.is_active,
+        createdAt: u.created_at,
+        lastLogin: u.last_login,
+        socialProvider: u.social_provider,
+        avatarUrl: u.avatar_url,
+        playerId: u.player_id,
+        playerName: u.player_name
+      }))
+    });
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// GET /api/admin/users/:id - Dettaglio singolo utente
+app.get('/api/admin/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(`
+      SELECT id, name, email, phone_number as phone, user_code, email_verified, is_active, created_at
+      FROM users
+      WHERE id = $1
+    `, [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Utente non trovato' });
+    }
+
+    res.json({ success: true, user: result.rows[0] });
+  } catch (error) {
+    console.error('Error fetching user:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// PUT /api/admin/users/:id - Modifica utente
+app.put('/api/admin/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, email, phone, isActive, emailVerified } = req.body;
+
+    const result = await pool.query(`
+      UPDATE users
+      SET name = COALESCE($1, name),
+          email = COALESCE($2, email),
+          phone_number = COALESCE($3, phone_number),
+          is_active = COALESCE($4, is_active),
+          email_verified = COALESCE($5, email_verified)
+      WHERE id = $6
+      RETURNING id, name, email, phone_number, user_code, email_verified, is_active
+    `, [name, email, phone, isActive, emailVerified, id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Utente non trovato' });
+    }
+
+    console.log(`[Admin] User updated: ${result.rows[0].email}`);
+
+    res.json({ success: true, user: result.rows[0] });
+  } catch (error) {
+    console.error('Error updating user:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// DELETE /api/admin/users/:id - Elimina utente
+app.delete('/api/admin/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const userResult = await pool.query('SELECT email FROM users WHERE id = $1', [id]);
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Utente non trovato' });
+    }
+
+    await pool.query('DELETE FROM users WHERE id = $1', [id]);
+
+    console.log(`[Admin] User deleted: ${userResult.rows[0].email}`);
+
+    res.json({ success: true, message: 'Utente eliminato' });
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/admin/users/:id/verify-email - Verifica manuale email
+app.post('/api/admin/users/:id/verify-email', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(`
+      UPDATE users
+      SET email_verified = true,
+          email_verification_token = NULL,
+          email_verification_expires = NULL
+      WHERE id = $1
+      RETURNING email
+    `, [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Utente non trovato' });
+    }
+
+    console.log(`[Admin] Email manually verified: ${result.rows[0].email}`);
+
+    res.json({ success: true, message: 'Email verificata' });
+  } catch (error) {
+    console.error('Error verifying email:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/admin/users/:id/toggle-active - Attiva/Disattiva utente
+app.post('/api/admin/users/:id/toggle-active', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(`
+      UPDATE users
+      SET is_active = NOT is_active
+      WHERE id = $1
+      RETURNING email, is_active
+    `, [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Utente non trovato' });
+    }
+
+    const user = result.rows[0];
+    console.log(`[Admin] User ${user.is_active ? 'activated' : 'deactivated'}: ${user.email}`);
+
+    res.json({
+      success: true,
+      isActive: user.is_active,
+      message: user.is_active ? 'Utente attivato' : 'Utente disattivato'
+    });
+  } catch (error) {
+    console.error('Error toggling user active:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// GET /api/admin/users-stats - Statistiche utenti
+app.get('/api/admin/users-stats', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE email_verified = true) as verified,
+        COUNT(*) FILTER (WHERE email_verified = false OR email_verified IS NULL) as pending,
+        COUNT(*) FILTER (WHERE is_active = false) as inactive
+      FROM users
+    `);
+
+    res.json({
+      success: true,
+      stats: {
+        total: parseInt(result.rows[0].total),
+        verified: parseInt(result.rows[0].verified),
+        pending: parseInt(result.rows[0].pending),
+        inactive: parseInt(result.rows[0].inactive)
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching user stats:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/admin/users/:id/send-verification - Invia email di verifica
+app.post('/api/admin/users/:id/send-verification', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Get user data
+    const userResult = await pool.query(
+      'SELECT id, name, email, email_verification_token FROM users WHERE id = $1',
+      [id]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Utente non trovato' });
+    }
+
+    const user = userResult.rows[0];
+
+    // Generate new token if not exists
+    let token = user.email_verification_token;
+    if (!token) {
+      const crypto = require('crypto');
+      token = crypto.randomBytes(32).toString('hex');
+      await pool.query(
+        `UPDATE users SET
+          email_verification_token = $1,
+          email_verification_expires = NOW() + INTERVAL '24 hours'
+        WHERE id = $2`,
+        [token, id]
+      );
+    }
+
+    // Send email using SMTP settings
+    const smtp = global.smtpSettings || {};
+    if (!smtp.host || !smtp.user || !smtp.pass) {
+      return res.json({ success: false, error: 'SMTP non configurato. Vai in Impostazioni.' });
+    }
+
+    const transporter = nodemailer.createTransport({
+      host: smtp.host,
+      port: smtp.port || 587,
+      secure: smtp.secure || false,
+      auth: { user: smtp.user, pass: smtp.pass }
+    });
+
+    const verifyUrl = `https://api.teofly.it/login.html?verify=${token}`;
+
+    await transporter.sendMail({
+      from: `"${smtp.fromName || 'RePlayo'}" <${smtp.from || smtp.user}>`,
+      to: user.email,
+      subject: 'Conferma il tuo account RePlayo',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 30px; text-align: center;">
+            <h1 style="color: #00d9ff; margin: 0;">RePlayo</h1>
+          </div>
+          <div style="padding: 30px; background: #f5f5f5;">
+            <h2 style="color: #333;">Ciao ${user.name}!</h2>
+            <p style="color: #666; font-size: 16px;">
+              Per completare la registrazione e attivare il tuo account, clicca sul pulsante qui sotto:
+            </p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${verifyUrl}"
+                 style="background: #00d9ff; color: #1a1a2e; padding: 15px 30px; text-decoration: none;
+                        border-radius: 8px; font-weight: bold; display: inline-block;">
+                Conferma Email
+              </a>
+            </div>
+            <p style="color: #999; font-size: 12px;">Il link scade tra 24 ore.</p>
+          </div>
+        </div>
+      `
+    });
+
+    console.log(`[Admin] Verification email sent to ${user.email}`);
+    res.json({ success: true, message: 'Email inviata' });
+
+  } catch (error) {
+    console.error('Error sending verification email:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 // ==================== BOOKING SYSTEM API ====================
@@ -3185,5 +3505,170 @@ app.post('/api/videos/auto-download', async (req, res) => {
   } catch (error) {
     console.error('Auto download error:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// ==================== SMTP SETTINGS API ====================
+
+const nodemailer = require('nodemailer');
+
+// SMTP settings (loaded from DB on startup)
+let smtpSettings = {
+  host: '',
+  port: 587,
+  secure: false,
+  user: '',
+  pass: '',
+  from: '',
+  fromName: 'RePlayo'
+};
+
+// Load SMTP settings from database on startup
+async function loadSmtpSettingsFromDB() {
+  try {
+    const result = await pool.query("SELECT value FROM settings WHERE key = 'smtp'");
+    if (result.rows.length > 0 && result.rows[0].value) {
+      smtpSettings = JSON.parse(result.rows[0].value);
+      global.smtpSettings = smtpSettings;
+      console.log('[SMTP] Settings loaded from database:', {
+        host: smtpSettings.host,
+        port: smtpSettings.port,
+        user: smtpSettings.user
+      });
+    }
+  } catch (error) {
+    console.error('[SMTP] Error loading settings from DB:', error.message);
+  }
+}
+
+// Load settings on startup
+loadSmtpSettingsFromDB();
+
+// GET /api/settings/smtp - Get SMTP settings (without password)
+app.get('/api/settings/smtp', (req, res) => {
+  res.json({
+    success: true,
+    settings: {
+      host: smtpSettings.host,
+      port: smtpSettings.port,
+      secure: smtpSettings.secure,
+      user: smtpSettings.user,
+      from: smtpSettings.from,
+      fromName: smtpSettings.fromName
+      // Password not returned for security
+    }
+  });
+});
+
+// POST /api/settings/smtp - Save SMTP settings to database
+app.post('/api/settings/smtp', async (req, res) => {
+  try {
+    const { host, port, secure, user, pass, from, fromName } = req.body;
+
+    smtpSettings = {
+      host: host || smtpSettings.host,
+      port: port || smtpSettings.port,
+      secure: secure !== undefined ? secure : smtpSettings.secure,
+      user: user || smtpSettings.user,
+      pass: pass || smtpSettings.pass,
+      from: from || smtpSettings.from,
+      fromName: fromName || smtpSettings.fromName
+    };
+
+    // Save to database
+    await pool.query(`
+      INSERT INTO settings (key, value, updated_at)
+      VALUES ('smtp', $1, NOW())
+      ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()
+    `, [JSON.stringify(smtpSettings)]);
+
+    // Update global for auth.js
+    global.smtpSettings = smtpSettings;
+
+    console.log('[SMTP] Settings saved to database:', {
+      host: smtpSettings.host,
+      port: smtpSettings.port,
+      user: smtpSettings.user,
+      from: smtpSettings.from
+    });
+
+    res.json({ success: true, message: 'Impostazioni SMTP salvate' });
+  } catch (error) {
+    console.error('Error saving SMTP settings:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// GET /api/settings/smtp/test - Test SMTP connection
+app.get('/api/settings/smtp/test', async (req, res) => {
+  try {
+    if (!smtpSettings.host || !smtpSettings.user) {
+      return res.json({ success: false, error: 'SMTP non configurato' });
+    }
+
+    const transporter = nodemailer.createTransport({
+      host: smtpSettings.host,
+      port: smtpSettings.port,
+      secure: smtpSettings.secure,
+      auth: {
+        user: smtpSettings.user,
+        pass: smtpSettings.pass
+      }
+    });
+
+    await transporter.verify();
+
+    res.json({ success: true, message: 'Connessione SMTP riuscita' });
+  } catch (error) {
+    console.error('SMTP test error:', error);
+    res.json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/settings/smtp/send-test - Send test email
+app.post('/api/settings/smtp/send-test', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ success: false, error: 'Email richiesta' });
+    }
+
+    if (!smtpSettings.host || !smtpSettings.user) {
+      return res.json({ success: false, error: 'SMTP non configurato' });
+    }
+
+    const transporter = nodemailer.createTransport({
+      host: smtpSettings.host,
+      port: smtpSettings.port,
+      secure: smtpSettings.secure,
+      auth: {
+        user: smtpSettings.user,
+        pass: smtpSettings.pass
+      }
+    });
+
+    await transporter.sendMail({
+      from: `"${smtpSettings.fromName}" <${smtpSettings.from || smtpSettings.user}>`,
+      to: email,
+      subject: 'RePlayo - Email di Test',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h1 style="color: #00d9ff;">RePlayo</h1>
+          <p>Questa e' un'email di test.</p>
+          <p>Se la ricevi, la configurazione SMTP e' corretta!</p>
+          <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+          <p style="color: #888; font-size: 12px;">
+            Inviata il: ${new Date().toLocaleString('it-IT')}
+          </p>
+        </div>
+      `
+    });
+
+    console.log(`[SMTP] Test email sent to ${email}`);
+    res.json({ success: true, message: 'Email di test inviata' });
+  } catch (error) {
+    console.error('Send test email error:', error);
+    res.json({ success: false, error: error.message });
   }
 });
