@@ -1456,6 +1456,41 @@ app.delete('/api/courts/:id', async (req, res) => {
   }
 });
 
+// PUT /api/courts/:id/camera - Associa telecamera a campo
+app.put('/api/courts/:id/camera', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { camera_id } = req.body;
+
+    const result = await pool.query(
+      `UPDATE courts SET camera_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
+      [camera_id, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Campo non trovato' });
+    }
+    res.json({ success: true, court: result.rows[0] });
+  } catch (error) {
+    console.error('Error updating court camera:', error);
+    res.status(500).json({ error: 'Errore nell associazione telecamera' });
+  }
+});
+
+// GET /api/courts/with-cameras - Lista campi con telecamera associata
+app.get('/api/courts/with-cameras', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, name, sport_type, camera_id, has_video_recording
+       FROM courts WHERE is_active = true ORDER BY name`
+    );
+    res.json({ success: true, courts: result.rows });
+  } catch (error) {
+    console.error('Error fetching courts with cameras:', error);
+    res.status(500).json({ error: 'Errore nel recupero dei campi' });
+  }
+});
+
 // GET /api/opening-hours - Orari apertura
 app.get('/api/opening-hours', async (req, res) => {
   try {
@@ -2488,5 +2523,294 @@ app.post('/api/synology/list-recordings', async (req, res) => {
       success: false,
       error: error.message
     });
+  }
+});
+
+// ==================== APP CONFIG API ====================
+
+// GET /api/config - Leggi configurazione
+app.get('/api/config', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT key, value, description FROM app_config ORDER BY key');
+    const config = {};
+    result.rows.forEach(row => {
+      config[row.key] = { value: row.value, description: row.description };
+    });
+    res.json({ success: true, config });
+  } catch (error) {
+    console.error('Error fetching config:', error);
+    res.status(500).json({ error: 'Errore nel recupero configurazione' });
+  }
+});
+
+// PUT /api/config/:key - Aggiorna configurazione
+app.put('/api/config/:key', async (req, res) => {
+  try {
+    const { key } = req.params;
+    const { value } = req.body;
+
+    const result = await pool.query(
+      `UPDATE app_config SET value = $1, updated_at = CURRENT_TIMESTAMP WHERE key = $2 RETURNING *`,
+      [value, key]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Configurazione non trovata' });
+    }
+    res.json({ success: true, config: result.rows[0] });
+  } catch (error) {
+    console.error('Error updating config:', error);
+    res.status(500).json({ error: 'Errore nell aggiornamento configurazione' });
+  }
+});
+
+// ==================== AUTO VIDEO DOWNLOAD API ====================
+
+// GET /api/bookings/for-video-download - Prenotazioni da scaricare video
+app.get('/api/bookings/for-video-download', async (req, res) => {
+  try {
+    const { date, court_id } = req.query;
+
+    if (!date) {
+      return res.status(400).json({ error: 'Data obbligatoria' });
+    }
+
+    let query = `
+      SELECT b.id as booking_id, b.booking_date, b.start_time, b.end_time, b.duration_minutes,
+             b.match_id, b.customer_name,
+             c.id as court_id, c.name as court_name, c.sport_type, c.camera_id,
+             m.id as match_uuid, m.booking_code,
+             (SELECT COUNT(*) FROM videos v WHERE v.match_id = m.id) as video_count
+      FROM bookings b
+      JOIN courts c ON b.court_id = c.id
+      LEFT JOIN matches m ON b.match_id = m.id
+      WHERE b.booking_date = $1
+        AND b.status = 'confirmed'
+        AND c.camera_id IS NOT NULL
+        AND c.has_video_recording = true
+    `;
+    const params = [date];
+
+    if (court_id) {
+      params.push(court_id);
+      query += ` AND c.id = $${params.length}`;
+    }
+
+    query += ` ORDER BY b.start_time`;
+
+    const result = await pool.query(query, params);
+
+    res.json({
+      success: true,
+      count: result.rows.length,
+      bookings: result.rows.map(b => ({
+        booking_id: b.booking_id,
+        booking_date: b.booking_date,
+        start_time: b.start_time,
+        end_time: b.end_time,
+        duration_minutes: b.duration_minutes,
+        customer_name: b.customer_name,
+        court_id: b.court_id,
+        court_name: b.court_name,
+        sport_type: b.sport_type,
+        camera_id: b.camera_id,
+        match_id: b.match_uuid,
+        booking_code: b.booking_code,
+        video_count: parseInt(b.video_count) || 0,
+        has_video: parseInt(b.video_count) > 0
+      }))
+    });
+  } catch (error) {
+    console.error('Error fetching bookings for video:', error);
+    res.status(500).json({ error: 'Errore nel recupero prenotazioni' });
+  }
+});
+
+// POST /api/videos/auto-download - Download automatico video per booking
+app.post('/api/videos/auto-download', async (req, res) => {
+  try {
+    const { booking_id } = req.body;
+
+    // 1. Recupera info booking e match
+    const bookingResult = await pool.query(`
+      SELECT b.id, b.booking_date, b.start_time, b.match_id,
+             c.camera_id, c.name as court_name,
+             m.id as match_uuid
+      FROM bookings b
+      JOIN courts c ON b.court_id = c.id
+      LEFT JOIN matches m ON b.match_id = m.id
+      WHERE b.id = $1
+    `, [booking_id]);
+
+    if (bookingResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Prenotazione non trovata' });
+    }
+
+    const booking = bookingResult.rows[0];
+
+    if (!booking.camera_id) {
+      return res.status(400).json({ error: 'Nessuna telecamera associata al campo' });
+    }
+
+    // Se non c'è match_id, crealo automaticamente
+    if (!booking.match_id) {
+      console.log(`Auto-creating match for booking ${booking_id}`);
+      // Recupera info complete del booking e court
+      const fullBookingRes = await pool.query(`
+        SELECT b.*, c.sport_type, c.name as court_name
+        FROM bookings b
+        JOIN courts c ON b.court_id = c.id
+        WHERE b.id = $1
+      `, [booking_id]);
+
+      const fullBooking = fullBookingRes.rows[0];
+      const court = { sport_type: fullBooking.sport_type, name: fullBooking.court_name };
+
+      const newMatch = await createMatchFromBooking(fullBooking, court);
+      if (!newMatch) {
+        return res.status(500).json({ error: 'Impossibile creare match automatico' });
+      }
+      booking.match_uuid = newMatch.id;
+      booking.match_id = newMatch.id;
+    }
+
+    // 2. Recupera configurazione
+    const configResult = await pool.query(`SELECT key, value FROM app_config WHERE key IN ('video_segment_minutes', 'synology_host', 'synology_port', 'synology_user', 'synology_pass')`);
+    const config = {};
+    configResult.rows.forEach(r => config[r.key] = r.value);
+
+    // 3. Calcola range temporale per cercare la registrazione
+    // booking_date è un Date object da PostgreSQL, start_time è una stringa HH:MM:SS
+    const bookingDate = booking.booking_date instanceof Date
+      ? booking.booking_date.toISOString().split('T')[0]
+      : booking.booking_date;
+    const startTime = booking.start_time;
+
+    // Costruisci datetime di inizio prenotazione
+    console.log(`[AutoDownload] Building datetime from date: ${bookingDate}, time: ${startTime}`);
+    const startDateTime = new Date(`${bookingDate}T${startTime}`);
+    // Cerca registrazioni in un range di +/- 10 minuti dall'inizio
+    const searchStart = new Date(startDateTime.getTime() - 10 * 60 * 1000);
+    const searchEnd = new Date(startDateTime.getTime() + 10 * 60 * 1000);
+
+    // 4. Connetti a Synology e cerca registrazioni
+    const synology = new SynologyService(
+      config.synology_host || '192.168.1.69',
+      config.synology_port || '5000',
+      config.synology_user || 'admin',
+      config.synology_pass || 'Druido#00'
+    );
+
+    await synology.login();
+    const recordings = await synology.listRecordings(
+      booking.camera_id,
+      searchStart.toISOString(),
+      searchEnd.toISOString()
+    );
+
+    if (recordings.length === 0) {
+      await synology.logout();
+      return res.status(404).json({
+        error: 'Nessuna registrazione trovata',
+        searchRange: { start: searchStart.toISOString(), end: searchEnd.toISOString() },
+        cameraId: booking.camera_id
+      });
+    }
+
+    // 5. Trova la registrazione più vicina all'orario di inizio
+    let closestRecording = recordings[0];
+    let minDiff = Infinity;
+
+    recordings.forEach(rec => {
+      const recStart = new Date((rec.start_time || rec.startTime) * 1000);
+      const diff = Math.abs(recStart.getTime() - startDateTime.getTime());
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestRecording = rec;
+      }
+    });
+
+    // 6. Scarica il video (senza compressione)
+    const recStartTime = closestRecording.start_time || closestRecording.startTime;
+    const recEndTime = closestRecording.end_time || closestRecording.endTime || closestRecording.stop_time || closestRecording.stopTime;
+
+    // Genera nome file
+    const timestamp = new Date(recStartTime * 1000).toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const filename = `${booking.court_name.replace(/\s+/g, '_')}_${timestamp}.mp4`;
+    const filePath = path.join(LOCAL_STORAGE_PATH, filename);
+
+    // Scarica il video usando l'API Surveillance Station Recording.Download
+    const eventId = closestRecording.id || closestRecording.eventId;
+    console.log(`[AutoDownload] Downloading recording eventId: ${eventId}`);
+    console.log(`[AutoDownload] Destination: ${filePath}`);
+
+    try {
+      const downloadInfo = await synology.getRecordingUrlByEventId(eventId);
+      console.log(`[AutoDownload] Download URL obtained`);
+
+      // Scarica il file usando axios
+      const downloadResponse = await axios({
+        method: 'GET',
+        url: downloadInfo.url,
+        responseType: 'stream',
+        timeout: 300000, // 5 minuti timeout
+        httpsAgent: new (require('https').Agent)({ rejectUnauthorized: false })
+      });
+
+      // Salva il file
+      const writeStream = fsSync.createWriteStream(filePath);
+      downloadResponse.data.pipe(writeStream);
+
+      await new Promise((resolve, reject) => {
+        writeStream.on('finish', resolve);
+        writeStream.on('error', reject);
+      });
+
+      console.log(`[AutoDownload] File downloaded to: ${filePath}`);
+      await synology.logout();
+    } catch (downloadError) {
+      await synology.logout();
+      console.error(`[AutoDownload] Download error:`, downloadError.message);
+      return res.status(500).json({ error: `Errore download video: ${downloadError.message}` });
+    }
+
+    if (!fsSync.existsSync(filePath)) {
+      return res.status(500).json({ error: `File non trovato dopo il download: ${filePath}` });
+    }
+
+    const finalPath = filePath;
+    const finalFilename = filename;
+    const fs = require('fs');
+
+    // 7. Crea record video nel database
+    const duration = recEndTime && recStartTime ? (parseInt(recEndTime) - parseInt(recStartTime)) : 300;
+    const fileStats = fs.statSync(finalPath);
+
+    const videoResult = await pool.query(`
+      INSERT INTO videos (match_id, title, file_path, duration_seconds, file_size_bytes, recorded_at, is_highlight)
+      VALUES ($1, $2, $3, $4, $5, $6, false)
+      RETURNING id
+    `, [
+      booking.match_uuid,
+      `${booking.court_name} - ${startTime}`,
+      finalPath,
+      duration,
+      fileStats.size,
+      new Date(recStartTime * 1000)
+    ]);
+
+    res.json({
+      success: true,
+      message: 'Video scaricato e associato',
+      video_id: videoResult.rows[0].id,
+      filename: finalFilename,
+      duration: duration,
+      file_size: fileStats.size,
+      recording_start: new Date(recStartTime * 1000).toISOString()
+    });
+
+  } catch (error) {
+    console.error('Auto download error:', error);
+    res.status(500).json({ error: error.message });
   }
 });

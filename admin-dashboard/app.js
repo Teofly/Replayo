@@ -3024,3 +3024,321 @@ async function downloadRecording() {
         `;
     }
 }
+
+// ==================== CAMERA-COURT ASSOCIATIONS ====================
+
+let cachedCameras = [];
+let cachedCourts = [];
+
+async function loadCameraCourtAssociations() {
+    const container = document.getElementById('camera-court-associations');
+    if (!container) return;
+
+    container.innerHTML = '<p style="color: #a0a0a0;">Caricamento...</p>';
+
+    try {
+        // Carica campi e telecamere in parallelo
+        const [courtsRes, camerasRes] = await Promise.all([
+            apiFetch(`${API_BASE_URL}/courts/with-cameras`),
+            getCachedCameras()
+        ]);
+
+        const courtsData = await courtsRes.json();
+        if (!courtsData.success) throw new Error('Errore caricamento campi');
+
+        cachedCourts = courtsData.courts;
+
+        // Genera HTML per ogni campo
+        let html = '<div style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));">';
+
+        cachedCourts.forEach(court => {
+            const currentCamera = court.camera_id;
+            const cameraName = currentCamera ? (cachedCameras.find(c => c.id === currentCamera)?.name || `Camera ${currentCamera}`) : 'Non assegnata';
+
+            html += `
+                <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 8px; border: 1px solid ${currentCamera ? 'var(--success)' : 'var(--border)'};">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                        <strong style="color: var(--accent-primary);">${court.name}</strong>
+                        <span style="font-size: 0.8rem; color: #a0a0a0;">${court.sport_type}</span>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <select id="camera-select-${court.id}" style="flex: 1; padding: 0.5rem; border-radius: 4px; background: #1a1a2e; color: #fff; border: 1px solid #333;">
+                            <option value="">-- Nessuna telecamera --</option>
+                            ${cachedCameras.map(cam => `<option value="${cam.id}" ${cam.id === currentCamera ? 'selected' : ''}>${cam.name} (ID: ${cam.id})</option>`).join('')}
+                        </select>
+                        <button class="btn btn-primary" style="padding: 0.5rem 1rem;" onclick="saveCameraAssociation('${court.id}')">Salva</button>
+                    </div>
+                    <small style="color: ${currentCamera ? 'var(--success)' : '#a0a0a0'}; margin-top: 0.5rem; display: block;">
+                        ${currentCamera ? `✓ ${cameraName}` : 'Nessuna telecamera associata'}
+                    </small>
+                </div>
+            `;
+        });
+
+        html += '</div>';
+        container.innerHTML = html;
+
+        // Popola anche il select per il download automatico
+        populateAutoDownloadCourtSelect();
+
+    } catch (error) {
+        console.error('Error loading associations:', error);
+        container.innerHTML = `<p style="color: var(--danger);">Errore: ${error.message}</p>`;
+    }
+}
+
+async function getCachedCameras() {
+    if (cachedCameras.length > 0) {
+        return { json: () => ({ success: true }) };
+    }
+
+    // Prova a caricare le telecamere da Synology
+    try {
+        const host = document.getElementById('test-synology-host')?.value || '192.168.1.69';
+        const port = document.getElementById('test-synology-port')?.value || '5000';
+        const user = document.getElementById('test-synology-user')?.value || 'admin';
+        const pass = document.getElementById('test-synology-pass')?.value || 'Druido#00';
+
+        const response = await apiFetch(`${API_BASE_URL}/synology/list-cameras`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ host, port, user, pass })
+        });
+
+        const data = await response.json();
+        if (data.success && data.cameras) {
+            cachedCameras = data.cameras;
+        }
+    } catch (e) {
+        console.error('Error loading cameras:', e);
+    }
+
+    return { json: () => ({ success: true }) };
+}
+
+async function saveCameraAssociation(courtId) {
+    const select = document.getElementById(`camera-select-${courtId}`);
+    if (!select) return;
+
+    const cameraId = select.value ? parseInt(select.value) : null;
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/courts/${courtId}/camera`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ camera_id: cameraId })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            alert('Associazione salvata!');
+            loadCameraCourtAssociations(); // Ricarica per aggiornare UI
+        } else {
+            alert('Errore: ' + (data.error || 'Sconosciuto'));
+        }
+    } catch (error) {
+        console.error('Error saving association:', error);
+        alert('Errore: ' + error.message);
+    }
+}
+
+// ==================== AUTO DOWNLOAD ====================
+
+function populateAutoDownloadCourtSelect() {
+    const select = document.getElementById('auto-download-court');
+    if (!select) return;
+
+    select.innerHTML = '<option value="">Tutti i campi con telecamera</option>';
+    cachedCourts.filter(c => c.camera_id).forEach(court => {
+        select.innerHTML += `<option value="${court.id}">${court.name}</option>`;
+    });
+}
+
+async function previewAutoDownload() {
+    const dateInput = document.getElementById('auto-download-date');
+    const courtSelect = document.getElementById('auto-download-court');
+    const previewDiv = document.getElementById('auto-download-preview');
+
+    if (!dateInput || !previewDiv) return;
+
+    const date = dateInput.value;
+    if (!date) {
+        alert('Seleziona una data');
+        return;
+    }
+
+    previewDiv.style.display = 'block';
+    previewDiv.innerHTML = '<p style="color: #a0a0a0;">Caricamento prenotazioni...</p>';
+
+    try {
+        let url = `${API_BASE_URL}/bookings/for-video-download?date=${date}`;
+        if (courtSelect?.value) {
+            url += `&court_id=${courtSelect.value}`;
+        }
+
+        const response = await apiFetch(url);
+        const data = await response.json();
+
+        if (!data.success) throw new Error(data.error);
+
+        if (data.bookings.length === 0) {
+            previewDiv.innerHTML = '<p style="color: var(--warning);">Nessuna prenotazione trovata per questa data con telecamera associata.</p>';
+            return;
+        }
+
+        let html = `<h4 style="margin-bottom: 1rem;">Prenotazioni trovate: ${data.count}</h4>`;
+        html += '<div style="display: grid; gap: 0.75rem;">';
+
+        data.bookings.forEach(b => {
+            const statusIcon = b.has_video ? '✅' : '⏳';
+            const statusText = b.has_video ? 'Video già presente' : 'Da scaricare';
+            const statusColor = b.has_video ? 'var(--success)' : 'var(--warning)';
+
+            html += `
+                <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                    <div>
+                        <strong>${b.court_name}</strong> - ${b.start_time.slice(0,5)}
+                        <br><small style="color: #a0a0a0;">${b.customer_name || 'N/A'} | Camera ID: ${b.camera_id}</small>
+                    </div>
+                    <div style="text-align: right;">
+                        <span style="color: ${statusColor};">${statusIcon} ${statusText}</span>
+                        ${!b.has_video ? `<br><button class="btn btn-sm btn-success" style="margin-top: 0.25rem; padding: 0.25rem 0.5rem; font-size: 0.8rem;" onclick="downloadSingleVideo('${b.booking_id}', this)">Scarica</button>` : ''}
+                    </div>
+                </div>
+            `;
+        });
+
+        html += '</div>';
+        previewDiv.innerHTML = html;
+
+    } catch (error) {
+        console.error('Preview error:', error);
+        previewDiv.innerHTML = `<p style="color: var(--danger);">Errore: ${error.message}</p>`;
+    }
+}
+
+async function downloadSingleVideo(bookingId, button) {
+    if (button) {
+        button.disabled = true;
+        button.textContent = 'Scaricando...';
+    }
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/videos/auto-download`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ booking_id: bookingId })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            if (button) {
+                button.textContent = '✓ Fatto';
+                button.style.background = 'var(--success)';
+                button.parentElement.querySelector('span').textContent = '✅ Video scaricato';
+                button.parentElement.querySelector('span').style.color = 'var(--success)';
+            }
+        } else {
+            throw new Error(data.error || 'Download fallito');
+        }
+    } catch (error) {
+        console.error('Download error:', error);
+        if (button) {
+            button.disabled = false;
+            button.textContent = 'Riprova';
+            button.style.background = 'var(--danger)';
+        }
+        alert('Errore download: ' + error.message);
+    }
+}
+
+async function startAutoDownload() {
+    const dateInput = document.getElementById('auto-download-date');
+    const courtSelect = document.getElementById('auto-download-court');
+    const progressDiv = document.getElementById('auto-download-progress');
+
+    if (!dateInput || !progressDiv) return;
+
+    const date = dateInput.value;
+    if (!date) {
+        alert('Seleziona una data');
+        return;
+    }
+
+    // Conferma
+    if (!confirm('Vuoi avviare il download automatico dei video per tutte le prenotazioni senza video?')) {
+        return;
+    }
+
+    progressDiv.style.display = 'block';
+    progressDiv.innerHTML = '<p style="color: var(--accent-primary);">Recupero prenotazioni...</p>';
+
+    try {
+        // Recupera prenotazioni
+        let url = `${API_BASE_URL}/bookings/for-video-download?date=${date}`;
+        if (courtSelect?.value) {
+            url += `&court_id=${courtSelect.value}`;
+        }
+
+        const response = await apiFetch(url);
+        const data = await response.json();
+
+        if (!data.success) throw new Error(data.error);
+
+        // Filtra solo quelle senza video
+        const toDownload = data.bookings.filter(b => !b.has_video);
+
+        if (toDownload.length === 0) {
+            progressDiv.innerHTML = '<p style="color: var(--success);">✓ Tutti i video sono già stati scaricati!</p>';
+            return;
+        }
+
+        progressDiv.innerHTML = `<p>Scaricamento ${toDownload.length} video in corso...</p><div id="download-log" style="max-height: 300px; overflow-y: auto; margin-top: 1rem;"></div>`;
+        const logDiv = document.getElementById('download-log');
+
+        let success = 0;
+        let failed = 0;
+
+        for (const booking of toDownload) {
+            logDiv.innerHTML += `<p style="color: #a0a0a0;">⏳ ${booking.court_name} - ${booking.start_time.slice(0,5)}...</p>`;
+
+            try {
+                const dlResponse = await apiFetch(`${API_BASE_URL}/videos/auto-download`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ booking_id: booking.booking_id })
+                });
+
+                const dlData = await dlResponse.json();
+
+                if (dlData.success) {
+                    logDiv.lastElementChild.innerHTML = `<span style="color: var(--success);">✓ ${booking.court_name} - ${booking.start_time.slice(0,5)} scaricato</span>`;
+                    success++;
+                } else {
+                    throw new Error(dlData.error);
+                }
+            } catch (err) {
+                logDiv.lastElementChild.innerHTML = `<span style="color: var(--danger);">✗ ${booking.court_name} - ${booking.start_time.slice(0,5)}: ${err.message}</span>`;
+                failed++;
+            }
+        }
+
+        progressDiv.querySelector('p').innerHTML = `<span style="color: var(--success);">Download completato: ${success} ok, ${failed} falliti</span>`;
+
+        // Aggiorna preview
+        previewAutoDownload();
+
+    } catch (error) {
+        console.error('Auto download error:', error);
+        progressDiv.innerHTML = `<p style="color: var(--danger);">Errore: ${error.message}</p>`;
+    }
+}
+
+// Inizializza data di default per auto-download
+document.addEventListener('DOMContentLoaded', () => {
+    const dateInput = document.getElementById('auto-download-date');
+    if (dateInput && !dateInput.value) {
+        dateInput.value = new Date().toISOString().split('T')[0];
+    }
+});
