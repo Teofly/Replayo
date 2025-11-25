@@ -1545,8 +1545,11 @@ app.post('/api/club/images', imageUpload.single('image'), async (req, res) => {
     // Trova il prossimo numero disponibile
     const files = await fs.readdir(CLUB_IMAGES_PATH);
     const existingNumbers = files
-      .map(f => parseInt(f.match(/^(\d+)/) || [0, 0])[1])
-      .filter(n => !isNaN(n));
+      .map(f => {
+        const match = f.match(/^(\d+)/);
+        return match ? parseInt(match[1], 10) : 0;
+      })
+      .filter(n => n > 0);
     const nextNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) + 1 : 1;
 
     // Estensione originale

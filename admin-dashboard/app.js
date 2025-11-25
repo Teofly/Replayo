@@ -3555,42 +3555,85 @@ async function loadClubImages() {
     }
 }
 
-async function uploadClubImage(input) {
-    if (!input.files || !input.files[0]) return;
-    
-    const file = input.files[0];
-    
-    // Validate
-    if (file.size > 10 * 1024 * 1024) {
-        alert('Immagine troppo grande! Max 10MB');
+async function uploadClubImages(input) {
+    if (!input.files || input.files.length === 0) return;
+
+    const files = Array.from(input.files);
+    const totalFiles = files.length;
+    let successCount = 0;
+    let errorCount = 0;
+    const errors = [];
+
+    // Validate all files first
+    for (const file of files) {
+        if (file.size > 10 * 1024 * 1024) {
+            errors.push(`${file.name}: troppo grande (max 10MB)`);
+            errorCount++;
+        }
+    }
+
+    const validFiles = files.filter(f => f.size <= 10 * 1024 * 1024);
+
+    if (validFiles.length === 0) {
+        alert('Nessuna immagine valida da caricare!\n\n' + errors.join('\n'));
         input.value = '';
         return;
     }
-    
-    const formData = new FormData();
-    formData.append('image', file);
-    
-    try {
-        const response = await fetch(`${API_BASE_URL}/club/images`, {
-            method: 'POST',
-            headers: getAuthHeader(),
-            body: formData
-        });
-        
-        const data = await response.json();
-        
-        if (!response.ok || !data.success) {
-            throw new Error(data.error || 'Errore upload');
+
+    // Show progress
+    const progressText = totalFiles > 1 ? `Caricamento ${totalFiles} immagini...` : 'Caricamento immagine...';
+    const grid = document.getElementById('club-images-grid');
+    const originalContent = grid.innerHTML;
+    grid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 2rem;">
+        <p style="font-size: 2rem; margin-bottom: 1rem;">⏳</p>
+        <p id="upload-progress-text">${progressText}</p>
+        <div style="background: #333; border-radius: 4px; height: 8px; margin-top: 1rem; overflow: hidden;">
+            <div id="upload-progress-bar" style="background: var(--success); height: 100%; width: 0%; transition: width 0.3s;"></div>
+        </div>
+    </div>`;
+
+    // Upload each file
+    for (let i = 0; i < validFiles.length; i++) {
+        const file = validFiles[i];
+        const formData = new FormData();
+        formData.append('image', file);
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/club/images`, {
+                method: 'POST',
+                headers: getAuthHeader(),
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'Errore upload');
+            }
+
+            successCount++;
+        } catch (error) {
+            console.error(`Error uploading ${file.name}:`, error);
+            errors.push(`${file.name}: ${error.message}`);
+            errorCount++;
         }
-        
-        alert('Immagine caricata con successo!');
-        loadClubImages();
-        
-    } catch (error) {
-        console.error('Error uploading club image:', error);
-        alert('Errore upload: ' + error.message);
+
+        // Update progress
+        const progress = Math.round(((i + 1) / validFiles.length) * 100);
+        const progressBar = document.getElementById('upload-progress-bar');
+        const progressTextEl = document.getElementById('upload-progress-text');
+        if (progressBar) progressBar.style.width = progress + '%';
+        if (progressTextEl) progressTextEl.textContent = `Caricamento ${i + 1}/${validFiles.length}...`;
     }
-    
+
+    // Show result
+    let message = `Caricamento completato: ${successCount} successi`;
+    if (errorCount > 0) {
+        message += `, ${errorCount} errori\n\n${errors.join('\n')}`;
+    }
+    alert(message);
+
+    loadClubImages();
     input.value = '';
 }
 
