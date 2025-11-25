@@ -174,7 +174,7 @@ function navigateTo(page) {
         loadStorageInfo();
     } else if (page === 'bookings') {
         loadCourts();
-        loadCalendarCoverage();
+        renderCalendar(); // Renderizza calendario e seleziona oggi automaticamente
     } else if (page === 'test') {
         loadMatchesForTest();
         renderCalendar();
@@ -514,12 +514,17 @@ function renderCalendar() {
 
     grid.innerHTML = html;
 
-    // Seleziona automaticamente oggi se siamo nel mese corrente
+    // Seleziona automaticamente oggi SOLO se non c'è già una data selezionata
+    // e siamo nel mese corrente
     const now = new Date();
-    if (currentYear === now.getFullYear() && currentMonth === now.getMonth()) {
+    if (!selectedDate && currentYear === now.getFullYear() && currentMonth === now.getMonth()) {
         const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
-        if (!selectedDate || selectedDate !== todayStr) {
-            selectDate(todayStr);
+        selectDate(todayStr);
+    } else if (selectedDate) {
+        // Se c'è già una data selezionata, ri-evidenziala nel calendario
+        const selectedCell = document.querySelector(`.calendar-day[data-date="${selectedDate}"]`);
+        if (selectedCell) {
+            selectedCell.classList.add('selected');
         }
     }
 
@@ -2059,6 +2064,7 @@ function renderMatchCard(partita) {
                 <div class="match-card-actions">
                     ${videoCount > 0 ? `<button class="btn btn-secondary btn-small" onclick="showMatchVideos('${partita.id}', '${partita.booking_code}')">▶️ Video (${videoCount})</button>` : ''}
                     <button class="btn btn-success btn-small" onclick="openUploadVideo('${partita.id}', '${partita.booking_code}')">📤 Upload</button>
+                    <button class="btn btn-secondary btn-small" onclick="showMatchQRCode('${partita.booking_code}', '${partita.access_password}', '${partita.player_names[0] || 'Giocatore'}')">📱 QR</button>
                     <button class="btn btn-primary btn-small" onclick="editMatch('${partita.id}')">Edit</button>
                     <button class="btn btn-danger btn-small" onclick="deleteMatch('${partita.id}', '${partita.booking_code}')">Delete</button>
                 </div>
@@ -2099,6 +2105,73 @@ function copyToClipboard(text, btn) {
         btn.textContent = '✓';
         setTimeout(() => btn.textContent = original, 1000);
     });
+}
+
+// Genera e visualizza QR code per match
+function showMatchQRCode(bookingCode, password, playerName) {
+    // Formato: idpren|pwd|giocatore
+    const qrData = `${bookingCode}|${password}|${playerName}`;
+
+    // Crea modal per QR code
+    let modal = document.getElementById('qr-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'qr-modal';
+        modal.className = 'modal';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 400px; text-align: center;">
+                <h3>QR Code Partita</h3>
+                <div id="qr-code-container" style="margin: 1.5rem 0; display: flex; justify-content: center;"></div>
+                <p style="font-family: monospace; background: var(--bg-secondary); padding: 0.5rem; border-radius: 4px; word-break: break-all;" id="qr-data-display"></p>
+                <div style="margin-top: 1rem; display: flex; gap: 0.5rem; justify-content: center;">
+                    <button class="btn btn-primary" onclick="downloadQRCode()">📥 Scarica PNG</button>
+                    <button class="btn btn-secondary" onclick="document.getElementById('qr-modal').style.display='none'">Chiudi</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+
+    // Genera QR code usando l'API di QR Server (gratuita)
+    const qrContainer = document.getElementById('qr-code-container');
+    const qrDataDisplay = document.getElementById('qr-data-display');
+
+    // Usa Google Charts API per generare QR
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}`;
+    qrContainer.innerHTML = `<img id="qr-image" src="${qrUrl}" alt="QR Code" style="border-radius: 8px;">`;
+    qrDataDisplay.textContent = qrData;
+
+    // Store data for download
+    modal.dataset.qrData = qrData;
+    modal.dataset.bookingCode = bookingCode;
+
+    modal.style.display = 'flex';
+}
+
+function downloadQRCode() {
+    const modal = document.getElementById('qr-modal');
+    const qrData = modal.dataset.qrData;
+    const bookingCode = modal.dataset.bookingCode;
+
+    // Download usando fetch per convertire in blob
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(qrData)}`;
+
+    fetch(qrUrl)
+        .then(response => response.blob())
+        .then(blob => {
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `QR_${bookingCode}.png`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            a.remove();
+        })
+        .catch(err => {
+            console.error('Error downloading QR:', err);
+            alert('Errore nel download del QR code');
+        });
 }
 
 async function editMatch(partitaId) {

@@ -1754,22 +1754,66 @@ async function createMatchFromBooking(booking, court, playerNames = null) {
   }
 }
 
-
-// GET /api/bookings/:id - Get single booking
-app.get('/api/bookings/:id', async (req, res) => {
+// GET /api/bookings/for-video-download - Prenotazioni da scaricare video
+// IMPORTANTE: Questa route deve essere PRIMA di /api/bookings/:id per evitare conflitti
+app.get('/api/bookings/for-video-download', async (req, res) => {
   try {
-    const { id } = req.params;
-    const result = await pool.query('SELECT * FROM bookings WHERE id = $1', [id]);
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Prenotazione non trovata' });
+    const { date, court_id } = req.query;
+
+    if (!date) {
+      return res.status(400).json({ error: 'Data obbligatoria' });
     }
-    res.json({ booking: result.rows[0] });
+
+    let query = `
+      SELECT b.id as booking_id, b.booking_date, b.start_time, b.end_time, b.duration_minutes,
+             b.match_id, b.customer_name,
+             c.id as court_id, c.name as court_name, c.sport_type, c.camera_id,
+             m.id as match_uuid, m.booking_code,
+             (SELECT COUNT(*) FROM videos v WHERE v.match_id = m.id) as video_count
+      FROM bookings b
+      JOIN courts c ON b.court_id = c.id
+      LEFT JOIN matches m ON b.match_id = m.id
+      WHERE b.booking_date = $1
+        AND b.status = 'confirmed'
+        AND c.camera_id IS NOT NULL
+        AND c.has_video_recording = true
+    `;
+    const params = [date];
+
+    if (court_id) {
+      params.push(court_id);
+      query += ` AND c.id = $${params.length}`;
+    }
+
+    query += ` ORDER BY b.start_time`;
+
+    const result = await pool.query(query, params);
+
+    res.json({
+      success: true,
+      count: result.rows.length,
+      bookings: result.rows.map(b => ({
+        booking_id: b.booking_id,
+        booking_date: b.booking_date,
+        start_time: b.start_time,
+        end_time: b.end_time,
+        duration_minutes: b.duration_minutes,
+        customer_name: b.customer_name,
+        court_id: b.court_id,
+        court_name: b.court_name,
+        sport_type: b.sport_type,
+        camera_id: b.camera_id,
+        match_id: b.match_uuid,
+        booking_code: b.booking_code,
+        video_count: parseInt(b.video_count) || 0,
+        has_video: parseInt(b.video_count) > 0
+      }))
+    });
   } catch (error) {
-    console.error('Error fetching booking:', error);
-    res.status(500).json({ error: 'Errore nel recupero della prenotazione' });
+    console.error('Error fetching bookings for video:', error);
+    res.status(500).json({ error: 'Errore nel recupero prenotazioni' });
   }
 });
-
 
 // GET /api/bookings/:id - Get single booking
 app.get('/api/bookings/:id', async (req, res) => {
@@ -2566,66 +2610,6 @@ app.put('/api/config/:key', async (req, res) => {
 
 // ==================== AUTO VIDEO DOWNLOAD API ====================
 
-// GET /api/bookings/for-video-download - Prenotazioni da scaricare video
-app.get('/api/bookings/for-video-download', async (req, res) => {
-  try {
-    const { date, court_id } = req.query;
-
-    if (!date) {
-      return res.status(400).json({ error: 'Data obbligatoria' });
-    }
-
-    let query = `
-      SELECT b.id as booking_id, b.booking_date, b.start_time, b.end_time, b.duration_minutes,
-             b.match_id, b.customer_name,
-             c.id as court_id, c.name as court_name, c.sport_type, c.camera_id,
-             m.id as match_uuid, m.booking_code,
-             (SELECT COUNT(*) FROM videos v WHERE v.match_id = m.id) as video_count
-      FROM bookings b
-      JOIN courts c ON b.court_id = c.id
-      LEFT JOIN matches m ON b.match_id = m.id
-      WHERE b.booking_date = $1
-        AND b.status = 'confirmed'
-        AND c.camera_id IS NOT NULL
-        AND c.has_video_recording = true
-    `;
-    const params = [date];
-
-    if (court_id) {
-      params.push(court_id);
-      query += ` AND c.id = $${params.length}`;
-    }
-
-    query += ` ORDER BY b.start_time`;
-
-    const result = await pool.query(query, params);
-
-    res.json({
-      success: true,
-      count: result.rows.length,
-      bookings: result.rows.map(b => ({
-        booking_id: b.booking_id,
-        booking_date: b.booking_date,
-        start_time: b.start_time,
-        end_time: b.end_time,
-        duration_minutes: b.duration_minutes,
-        customer_name: b.customer_name,
-        court_id: b.court_id,
-        court_name: b.court_name,
-        sport_type: b.sport_type,
-        camera_id: b.camera_id,
-        match_id: b.match_uuid,
-        booking_code: b.booking_code,
-        video_count: parseInt(b.video_count) || 0,
-        has_video: parseInt(b.video_count) > 0
-      }))
-    });
-  } catch (error) {
-    console.error('Error fetching bookings for video:', error);
-    res.status(500).json({ error: 'Errore nel recupero prenotazioni' });
-  }
-});
-
 // POST /api/videos/auto-download - Download automatico video per booking
 app.post('/api/videos/auto-download', async (req, res) => {
   try {
@@ -2686,9 +2670,18 @@ app.post('/api/videos/auto-download', async (req, res) => {
       : booking.booking_date;
     const startTime = booking.start_time;
 
-    // Costruisci datetime di inizio prenotazione
+    // Costruisci datetime di inizio prenotazione CON timezone Europa/Roma
+    // Importante: le prenotazioni sono in ora locale italiana, non UTC
     console.log(`[AutoDownload] Building datetime from date: ${bookingDate}, time: ${startTime}`);
-    const startDateTime = new Date(`${bookingDate}T${startTime}`);
+    // Aggiungi il timezone offset per l'Italia (+01:00 in inverno, +02:00 in estate)
+    // Usiamo una data fissa per determinare se siamo in ora legale o solare
+    const testDate = new Date(`${bookingDate}T12:00:00`);
+    const isWinterTime = testDate.getMonth() < 2 || testDate.getMonth() > 9 ||
+                         (testDate.getMonth() === 2 && testDate.getDate() < 25) ||
+                         (testDate.getMonth() === 9 && testDate.getDate() > 25);
+    const tzOffset = isWinterTime ? '+01:00' : '+02:00';
+    const startDateTime = new Date(`${bookingDate}T${startTime}${tzOffset}`);
+    console.log(`[AutoDownload] Start datetime (with TZ ${tzOffset}): ${startDateTime.toISOString()}`);
     // Cerca registrazioni in un range di +/- 10 minuti dall'inizio
     const searchStart = new Date(startDateTime.getTime() - 10 * 60 * 1000);
     const searchEnd = new Date(startDateTime.getTime() + 10 * 60 * 1000);
@@ -2721,14 +2714,18 @@ app.post('/api/videos/auto-download', async (req, res) => {
     let closestRecording = recordings[0];
     let minDiff = Infinity;
 
+    console.log(`[AutoDownload] Looking for recording closest to: ${startDateTime.toISOString()} (${startDateTime.getTime()})`);
     recordings.forEach(rec => {
-      const recStart = new Date((rec.start_time || rec.startTime) * 1000);
+      const recStartTs = rec.start_time || rec.startTime;
+      const recStart = new Date(recStartTs * 1000);
       const diff = Math.abs(recStart.getTime() - startDateTime.getTime());
+      console.log(`[AutoDownload] Recording ${rec.id}: starts ${recStart.toISOString()}, diff: ${Math.round(diff/1000/60)} min`);
       if (diff < minDiff) {
         minDiff = diff;
         closestRecording = rec;
       }
     });
+    console.log(`[AutoDownload] Selected recording ${closestRecording.id} with diff ${Math.round(minDiff/1000/60)} min`);
 
     // 6. Scarica il video (senza compressione)
     const recStartTime = closestRecording.start_time || closestRecording.startTime;
