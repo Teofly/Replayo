@@ -468,8 +468,9 @@
                         </p>
                         <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem;">
                             <button class="btn btn-primary" onclick="loadCameraCourtAssociations()">Carica Associazioni</button>
-                            <button class="btn btn-secondary" onclick="listCameras()">Aggiorna Telecamere</button>
+                            <button class="btn btn-secondary" onclick="refreshCamerasForAssociation()">Aggiorna Telecamere</button>
                         </div>
+                        <div id="cameras-list-container" style="display: none; margin-bottom: 1.5rem; padding: 1rem; background: rgba(0,0,0,0.2); border-radius: 8px;"></div>
                         <div id="camera-court-associations" style="display: grid; gap: 1rem;"></div>
                     </div>
                 </div>
@@ -737,6 +738,6 @@
         </div>
     </div>
 
-    <script src="app.js?v=20251125i"></script>
+    <script src="app.js?v=20251125k"></script>
 </body>
 </html>

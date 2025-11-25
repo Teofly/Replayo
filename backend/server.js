@@ -231,15 +231,22 @@ app.get('/api/health', (req, res) => {
 // Environment Status Endpoint
 app.get("/api/status/environment", async (req, res) => {
   const fs = require("fs");
+  const { exec } = require("child_process");
+  const SynologyService = require('./synology_service');
+
   try {
     const status = {
       server: { status: "online", uptime: process.uptime() },
       api: { status: "ok", url: "http://" + req.headers.host },
       database: { status: "unknown" },
       nas: { status: "unknown", path: "/mnt/nas/replayo/videos" },
+      synology: { status: "unknown" },
+      cronVideoDownload: { status: "unknown" },
       dependencies: { nodejs: process.version, pm2: "running" },
       timestamp: new Date().toISOString()
     };
+
+    // Check Database
     try {
       await pool.query("SELECT 1");
       status.database.status = "connected";
@@ -247,6 +254,8 @@ app.get("/api/status/environment", async (req, res) => {
     } catch (dbError) {
       status.database.status = "error";
     }
+
+    // Check NAS Mount
     const nasPath = "/mnt/nas/replayo/videos";
     try {
       if (fs.existsSync(nasPath)) {
@@ -259,6 +268,34 @@ app.get("/api/status/environment", async (req, res) => {
     } catch (nasError) {
       status.nas.status = "error";
     }
+
+    // Check Synology Surveillance Station
+    try {
+      const synology = new SynologyService('192.168.1.69', '5000', 'admin', 'Druido#00');
+      await synology.login();
+      const cameras = await synology.getCameraList();
+      await synology.logout();
+      status.synology.status = "connected";
+      status.synology.cameras = cameras.length;
+    } catch (synError) {
+      status.synology.status = "error";
+      status.synology.error = synError.message;
+    }
+
+    // Check Cron Job for video download
+    try {
+      const cronCheck = await new Promise((resolve, reject) => {
+        exec("crontab -l 2>/dev/null | grep -c cron-video-download.js || echo 0", (err, stdout) => {
+          if (err) reject(err);
+          else resolve(parseInt(stdout.trim()) > 0);
+        });
+      });
+      status.cronVideoDownload.status = cronCheck ? "active" : "not_configured";
+      status.cronVideoDownload.schedule = cronCheck ? "ogni ora alle x:55" : null;
+    } catch (cronError) {
+      status.cronVideoDownload.status = "unknown";
+    }
+
     res.json({ success: true, status: status });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -2491,9 +2528,9 @@ app.post('/api/synology/list-cameras', async (req, res) => {
       count: cameras.length,
       cameras: cameras.map(cam => ({
         id: cam.id,
-        name: cam.name,
-        model: cam.model,
-        vendor: cam.vendor,
+        name: cam.newName || cam.name || cam.cameraName || `Camera ${cam.id}`,
+        model: cam.model || cam.detailInfo?.model || 'N/A',
+        vendor: cam.vendor || cam.detailInfo?.vendor || 'N/A',
         enabled: cam.enabled,
         status: cam.status
       }))

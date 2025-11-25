@@ -199,11 +199,15 @@ async function checkAPIStatus() {
             const uptimeMin = Math.floor(s.server.uptime / 60);
             const uptimeHrs = Math.floor(uptimeMin / 60);
             const uptimeStr = uptimeHrs > 0 ? `${uptimeHrs}h ${uptimeMin % 60}m` : `${uptimeMin}m`;
+            const synologyStatus = s.synology?.status === "connected";
+            const cronStatus = s.cronVideoDownload?.status === "active";
             envStatusEl.innerHTML = `
                 <p><strong>Server:</strong> <span style="color: var(--success)">🟢 Online</span> (uptime: ${uptimeStr})</p>
                 <p><strong>API:</strong> <span style="color: var(--success)">🟢 Connesso</span> - <code>${API_BASE_URL}</code></p>
                 <p><strong>Database:</strong> <span style="color: ${s.database.status === "connected" ? "var(--success)" : "var(--danger)"}">${s.database.status === "connected" ? "🟢" : "🔴"} ${s.database.status}</span> (${s.database.name || "N/A"})</p>
                 <p><strong>NAS Storage:</strong> <span style="color: ${s.nas.status === "mounted" ? "var(--success)" : "var(--danger)"}">${s.nas.status === "mounted" ? "🟢" : "🔴"} ${s.nas.status}</span></p>
+                <p><strong>Synology Surveillance:</strong> <span style="color: ${synologyStatus ? "var(--success)" : "var(--danger)"}">${synologyStatus ? "🟢" : "🔴"} ${synologyStatus ? `Connesso (${s.synology.cameras} telecamere)` : (s.synology?.error || "Non connesso")}</span></p>
+                <p><strong>Cron Video Download:</strong> <span style="color: ${cronStatus ? "var(--success)" : "var(--warning)"}">${cronStatus ? "🟢" : "🟡"} ${cronStatus ? s.cronVideoDownload.schedule : "Non configurato"}</span></p>
                 <hr style="border-color: var(--border); margin: 0.5rem 0;">
                 <p><strong>Dipendenze:</strong></p>
                 <p style="margin-left: 1rem;">• Node.js: ${s.dependencies.nodejs}</p>
@@ -3187,6 +3191,59 @@ async function getCachedCameras() {
     }
 
     return { json: () => ({ success: true }) };
+}
+
+async function refreshCamerasForAssociation() {
+    const container = document.getElementById('cameras-list-container');
+    if (!container) return;
+
+    container.style.display = 'block';
+    container.innerHTML = '<p style="color: #a0a0a0;">🔄 Caricamento telecamere da Synology...</p>';
+
+    try {
+        const host = document.getElementById('test-synology-host')?.value || '192.168.1.69';
+        const port = document.getElementById('test-synology-port')?.value || '5000';
+        const user = document.getElementById('test-synology-user')?.value || 'admin';
+        const pass = document.getElementById('test-synology-pass')?.value || 'Druido#00';
+
+        const response = await apiFetch(`${API_BASE_URL}/synology/list-cameras`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ host, port, user, pass })
+        });
+
+        const data = await response.json();
+
+        if (data.success && data.cameras) {
+            cachedCameras = data.cameras;
+
+            let html = `<p style="color: var(--success); margin-bottom: 1rem;">✅ Trovate ${data.cameras.length} telecamere</p>`;
+            html += '<div style="display: grid; gap: 0.5rem; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));">';
+
+            data.cameras.forEach(cam => {
+                html += `
+                    <div style="padding: 0.75rem; background: rgba(0,0,0,0.3); border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <strong style="color: var(--accent-primary);">ID: ${cam.id}</strong>
+                            <span style="margin-left: 0.5rem; color: #ccc;">${cam.name}</span>
+                        </div>
+                        <span style="color: ${cam.enabled ? 'var(--success)' : 'var(--danger)'}; font-size: 0.8rem;">${cam.enabled ? '● Attiva' : '○ Disattiva'}</span>
+                    </div>
+                `;
+            });
+
+            html += '</div>';
+            html += '<p style="color: #a0a0a0; font-size: 0.85rem; margin-top: 1rem;">Le telecamere sono state aggiornate. Ricarica le associazioni per usarle.</p>';
+            container.innerHTML = html;
+
+            // Ricarica automaticamente le associazioni
+            loadCameraCourtAssociations();
+        } else {
+            container.innerHTML = `<p style="color: var(--danger);">❌ Errore: ${data.error || 'Impossibile caricare le telecamere'}</p>`;
+        }
+    } catch (error) {
+        container.innerHTML = `<p style="color: var(--danger);">❌ Errore: ${error.message}</p>`;
+    }
 }
 
 async function saveCameraAssociation(courtId) {
