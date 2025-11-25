@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:html' as html;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:glassmorphism/glassmorphism.dart';
@@ -725,8 +725,16 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openLoginPage(BuildContext context) async {
-    // Navigate in same window on web
-    html.window.location.href = 'https://api.teofly.it/login.html';
+    final Uri url = Uri.parse('https://api.teofly.it/login.html');
+    try {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Impossibile aprire la pagina di login')),
+        );
+      }
+    }
   }
 
   Future<void> _openAdminDashboard(BuildContext context) async {

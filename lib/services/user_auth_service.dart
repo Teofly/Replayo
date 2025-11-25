@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:html' as html;
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -23,44 +22,11 @@ class UserAuthService extends ChangeNotifier {
   String? get accessToken => _accessToken;
 
   Future<void> init() async {
-    // First check URL hash for auth data (from login redirect)
-    _checkUrlAuth();
-
-    // Then load from storage
+    // Load from storage
     await _loadFromStorage();
   }
 
-  void _checkUrlAuth() {
-    try {
-      final hash = html.window.location.hash;
-      if (hash.startsWith('#auth=')) {
-        final authJson = Uri.decodeComponent(hash.substring(6));
-        final authData = jsonDecode(authJson);
-
-        if (authData['accessToken'] != null) {
-          _accessToken = authData['accessToken'];
-          _refreshToken = authData['refreshToken'];
-          _userName = authData['userName'];
-          _userEmail = authData['userEmail'];
-          _isLoggedIn = true;
-
-          // Save to storage
-          _saveToStorage();
-
-          // Clean URL
-          html.window.history.replaceState(null, '', html.window.location.pathname);
-
-          notifyListeners();
-        }
-      }
-    } catch (e) {
-      debugPrint('Error checking URL auth: $e');
-    }
-  }
-
   Future<void> _loadFromStorage() async {
-    if (_isLoggedIn) return; // Already loaded from URL
-
     final prefs = await SharedPreferences.getInstance();
     _accessToken = prefs.getString('accessToken');
     _refreshToken = prefs.getString('refreshToken');
