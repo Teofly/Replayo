@@ -257,6 +257,30 @@ class UserAuthService extends ChangeNotifier {
     }
   }
 
+  Future<Map<String, dynamic>> recoverPassword(String email) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/auth/recover-password'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email}),
+      );
+
+      final data = jsonDecode(response.body);
+      return {
+        'success': data['success'] == true,
+        'message': data['message'] ?? (data['success'] == true
+            ? 'Email inviata con successo'
+            : 'Errore durante il recupero password'),
+      };
+    } catch (e) {
+      debugPrint('Recover password error: $e');
+      return {
+        'success': false,
+        'message': 'Errore di connessione. Riprova.',
+      };
+    }
+  }
+
   Future<bool> loginWithApple() async {
     try {
       // Check if Apple Sign In is available

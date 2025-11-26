@@ -62,6 +62,10 @@ function basicAuth(req, res, next) {
     '/auth/me',                // Public: profilo utente (usa JWT, non Basic)
     '/auth/my-matches',        // Public: partite utente (usa JWT, non Basic)
     '/auth/logout',            // Public: logout utente
+    '/auth/recover-password',  // Public: recupero password
+    '/auth/reset-password',     // Public: reset password con token
+    '/auth/verify-reset-token', // Public: verifica token reset
+    '/bookings/my-bookings',    // Public: prenotazioni utente (usa JWT, non Basic)
   ];
   // Also allow video streaming, download and view endpoints
   // And POST /bookings for user booking requests (will be pending status)
@@ -2543,6 +2547,66 @@ async function createMatchFromBooking(booking, court, playerNames = null) {
     return null;
   }
 }
+
+// GET /api/bookings/my-bookings - Le mie prenotazioni (utente loggato)
+// IMPORTANTE: Questa route deve essere PRIMA di /api/bookings/:id per evitare conflitti
+app.get('/api/bookings/my-bookings', async (req, res) => {
+  try {
+    // Verifica token JWT direttamente (come fa /auth/me)
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Token mancante' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    const jwt = require('jsonwebtoken');
+    const JWT_SECRET = process.env.JWT_SECRET || 'replayo-jwt-secret-change-in-production-2024';
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch (err) {
+      return res.status(401).json({ error: 'Token non valido o scaduto' });
+    }
+
+    const userEmail = decoded.email;
+    if (!userEmail) {
+      return res.status(401).json({ error: 'Token non valido' });
+    }
+
+    console.log(`[my-bookings] Fetching bookings for user: ${userEmail}`);
+
+    // Cerca prenotazioni dove l'utente è il customer (email) o è nei player_names (array)
+    const query = `
+      SELECT
+        b.id, b.booking_date, b.start_time, b.end_time, b.duration_minutes,
+        b.match_id, b.customer_name, b.customer_email, b.status, b.player_names,
+        c.id as court_id, c.name as court_name, c.sport_type
+      FROM bookings b
+      JOIN courts c ON b.court_id = c.id
+      WHERE (
+        b.customer_email = $1
+        OR array_to_string(b.player_names, ',') ILIKE $2
+      )
+      AND b.status IN ('confirmed', 'pending')
+      ORDER BY b.booking_date DESC, b.start_time DESC
+      LIMIT 100
+    `;
+
+    const result = await pool.query(query, [userEmail, `%${userEmail}%`]);
+
+    console.log(`[my-bookings] Found ${result.rows.length} bookings for ${userEmail}`);
+
+    res.json({
+      success: true,
+      bookings: result.rows
+    });
+
+  } catch (error) {
+    console.error('Error fetching my bookings:', error);
+    res.status(500).json({ error: 'Errore nel recupero delle prenotazioni' });
+  }
+});
 
 // GET /api/bookings/for-video-download - Prenotazioni da scaricare video
 // IMPORTANTE: Questa route deve essere PRIMA di /api/bookings/:id per evitare conflitti

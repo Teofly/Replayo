@@ -53,5 +53,18 @@
 	<string>RePlayo richiede l'accesso alla fotocamera per registrare video delle partite.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>RePlayo richiede l'accesso al microfono per registrare l'audio durante le partite.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.replayo.replayo</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>replayo</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

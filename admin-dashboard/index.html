@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RePlayo Admin Dashboard</title>
     <link rel="icon" type="image/png" href="replayo-logo.png">
-    <link rel="stylesheet" href="style.css?v=20251126e">
+    <link rel="stylesheet" href="style.css?v=20251126g">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
@@ -103,49 +103,28 @@
                             </div>
                         </div>
 
+                        <!-- Stats (compact single row) -->
+                        <div class="users-stats-row" style="display: flex; gap: 1.5rem; margin-bottom: 1rem; flex-wrap: wrap;">
+                            <div class="stat-mini"><span class="stat-mini-icon">👥</span> Totale: <strong id="users-total">-</strong></div>
+                            <div class="stat-mini"><span class="stat-mini-icon">📱</span> Registrati: <strong id="users-registered">-</strong></div>
+                            <div class="stat-mini"><span class="stat-mini-icon">📋</span> Anagrafica: <strong id="users-players-only">-</strong></div>
+                            <div class="stat-mini"><span class="stat-mini-icon">✅</span> Verificati: <strong id="users-verified">-</strong></div>
+                            <div class="stat-mini"><span class="stat-mini-icon">👑</span> Admin: <strong id="users-admin">-</strong></div>
+                        </div>
+
                         <!-- Search & Filters -->
                         <div style="margin-bottom: 1.5rem;">
                             <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: center;">
-                                <div style="position: relative; flex: 1; min-width: 250px;">
-                                    <input type="text" id="users-search" placeholder="Cerca per nome, email, telefono o codice..."
-                                           oninput="onUnifiedUsersSearchInput()" onkeydown="onUnifiedUsersSearchKeydown(event)">
+                                <div class="users-search-container" style="position: relative; flex: 1; min-width: 400px; max-width: 600px;">
+                                    <input type="text" id="users-search" placeholder="Cerca per nome, email, telefono..."
+                                           oninput="onUnifiedUsersSearchInput()" onkeydown="onUnifiedUsersSearchKeydown(event)" autocomplete="off">
+                                    <div id="users-search-dropdown" class="search-dropdown" style="display: none;"></div>
                                 </div>
                                 <div class="user-type-filters">
                                     <button class="user-filter-btn active" data-type="" onclick="filterUsersByType('')">Tutti</button>
                                     <button class="user-filter-btn" data-type="registered" onclick="filterUsersByType('registered')">Registrati</button>
                                     <button class="user-filter-btn" data-type="players" onclick="filterUsersByType('players')">Anagrafica</button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Stats -->
-                        <div class="stats-grid" style="margin-bottom: 1.5rem;">
-                            <div class="stat-card">
-                                <div class="stat-icon">👥</div>
-                                <div class="stat-info">
-                                    <h3 id="users-total">-</h3>
-                                    <p>Totale</p>
-                                </div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-icon">📱</div>
-                                <div class="stat-info">
-                                    <h3 id="users-registered">-</h3>
-                                    <p>Registrati App</p>
-                                </div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-icon">📋</div>
-                                <div class="stat-info">
-                                    <h3 id="users-players-only">-</h3>
-                                    <p>Solo Anagrafica</p>
-                                </div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-icon">✅</div>
-                                <div class="stat-info">
-                                    <h3 id="users-verified">-</h3>
-                                    <p>Email Verificata</p>
+                                    <button class="user-filter-btn" data-type="admin" onclick="filterUsersByType('admin')">Admin</button>
                                 </div>
                             </div>
                         </div>
@@ -359,6 +338,10 @@
                                     <label for="club-website">Sito Web</label>
                                     <input type="url" id="club-website" placeholder="es. https://www.sportyclub.it" class="form-input">
                                 </div>
+                            </div>
+                            <div class="form-group" style="margin-top: 1rem;">
+                                <label for="club-hours">Orari Club</label>
+                                <textarea id="club-hours" rows="2" placeholder="es. Lun-Ven: 8:00-22:00 / Sab-Dom: 9:00-20:00" class="form-input" style="resize: vertical;"></textarea>
                             </div>
                             <div style="margin-top: 1.5rem;">
                                 <button type="submit" class="btn btn-primary">Salva Informazioni</button>
@@ -818,9 +801,10 @@
                     <label>Note</label>
                     <input type="text" id="user-notes" placeholder="Note aggiuntive...">
                 </div>
-                <div style="display: flex; gap: 1rem;">
+                <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
                     <button type="submit" class="btn btn-primary">Salva</button>
                     <button type="button" class="btn btn-secondary" onclick="document.getElementById('user-modal').style.display='none'">Annulla</button>
+                    <button type="button" id="reset-password-btn" class="btn btn-warning" onclick="sendPasswordResetEmail()" style="display: none;">🔑 Reset Password</button>
                 </div>
             </form>
         </div>
@@ -889,6 +873,9 @@
                 <button type="button" class="btn btn-success" id="confirm-booking-btn" style="display: none;">
                     Conferma Prenotazione
                 </button>
+                <button type="button" class="btn btn-info" id="send-email-btn" style="display: none;" onclick="sendBookingEmail()">
+                    Invia Mail
+                </button>
                 <button type="button" class="btn btn-primary" id="edit-booking-btn">
                     Modifica
                 </button>
@@ -925,6 +912,6 @@
         </div>
     </div>
 
-    <script src="app.js?v=20251126d"></script>
+    <script src="app.js?v=20251126f"></script>
 </body>
 </html>

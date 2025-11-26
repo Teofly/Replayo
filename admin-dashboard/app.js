@@ -982,6 +982,10 @@ async function showBookingDetails(bookingId) {
         // Show confirm button only for pending bookings
         confirmBtn.style.display = booking.status === 'pending' ? 'inline-block' : 'none';
 
+        // Show send email button for confirmed bookings
+        const sendEmailBtn = document.getElementById('send-email-btn');
+        sendEmailBtn.style.display = booking.status === 'confirmed' ? 'inline-block' : 'none';
+
     } catch (error) {
         console.error('Error loading booking details:', error);
         contentEl.innerHTML = '<p style="color: var(--danger)">Errore caricamento dettagli</p>';
@@ -1034,6 +1038,34 @@ async function deleteBooking() {
         }
     } catch (error) {
         alert('Errore: ' + error.message);
+    }
+}
+
+async function sendBookingEmail() {
+    if (!currentBookingDetails) return;
+
+    const sendBtn = document.getElementById('send-email-btn');
+    const originalText = sendBtn.textContent;
+    sendBtn.textContent = 'Invio...';
+    sendBtn.disabled = true;
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/bookings/${currentBookingDetails.id}/send-email`, {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alert(`Email inviate a ${data.recipients.length} partecipanti:\n${data.recipients.join('\n')}`);
+        } else {
+            throw new Error(data.error || 'Errore invio email');
+        }
+    } catch (error) {
+        alert('Errore: ' + error.message);
+    } finally {
+        sendBtn.textContent = originalText;
+        sendBtn.disabled = false;
     }
 }
 
@@ -3644,6 +3676,7 @@ async function loadClubInfo() {
             document.getElementById('club-phone').value = data.info.phone || '';
             document.getElementById('club-email').value = data.info.email || '';
             document.getElementById('club-website').value = data.info.website || '';
+            document.getElementById('club-hours').value = data.info.hours || '';
         }
     } catch (e) {
         console.log('Club info not found, using defaults');
@@ -3663,7 +3696,8 @@ async function saveClubInfo(event) {
         address: document.getElementById('club-address').value,
         phone: document.getElementById('club-phone').value,
         email: document.getElementById('club-email').value,
-        website: document.getElementById('club-website').value
+        website: document.getElementById('club-website').value,
+        hours: document.getElementById('club-hours').value
     };
 
     try {
@@ -3874,6 +3908,7 @@ async function loadUnifiedUsersStats() {
             document.getElementById('users-registered').textContent = data.stats.registered || 0;
             document.getElementById('users-players-only').textContent = data.stats.playersOnly || 0;
             document.getElementById('users-verified').textContent = data.stats.verified || 0;
+            document.getElementById('users-admin').textContent = data.stats.admin || 0;
         }
     } catch (error) {
         console.error('Error loading unified users stats:', error);
@@ -3938,10 +3973,8 @@ function renderUnifiedUsersList() {
 
         const userCode = user.userCode ? `<span class="user-code-badge">${user.userCode}</span>` : '';
 
-        // Bottone toggle admin (solo per utenti registrati)
-        const adminToggleBtn = user.isRegistered && user.userId
-            ? `<button class="btn ${user.isAdmin ? 'btn-warning' : 'btn-secondary'} btn-small" onclick="toggleUserAdmin('${user.userId}', ${user.isAdmin})">${user.isAdmin ? 'Rimuovi Admin' : 'Rendi Admin'}</button>`
-            : '';
+        // Bottone toggle admin (per tutti i contatti) - larghezza fissa per uniformare
+        const adminToggleBtn = `<button class="btn ${user.isAdmin ? 'btn-warning' : 'btn-secondary'} btn-small btn-admin-toggle" onclick="toggleUserAdmin('${user.playerId || ''}', '${user.userId || ''}', ${user.isAdmin}, '${user.email || ''}')">${user.isAdmin ? 'Rimuovi Admin' : 'Rendi Admin'}</button>`;
 
         return `
             <div class="user-card ${user.isAdmin ? 'is-admin' : ''}" data-id="${user.id}" data-player-id="${user.playerId || ''}" data-user-id="${user.userId || ''}">
@@ -3985,21 +4018,134 @@ function getInitials(firstName, lastName, fullName) {
     return '?';
 }
 
-// Search input handler
+// Search dropdown state
+let usersSearchDropdownIndex = -1;
+let usersSearchResults = [];
+
+// Search input handler - shows dropdown with suggestions
 function onUnifiedUsersSearchInput() {
     clearTimeout(unifiedUsersSearchTimeout);
-    unifiedUsersSearchTimeout = setTimeout(() => {
+    const searchValue = document.getElementById('users-search').value.trim();
+
+    if (searchValue.length < 2) {
+        hideUsersSearchDropdown();
+        // Still load/filter the main list
+        unifiedUsersSearchTimeout = setTimeout(() => {
+            loadUnifiedUsers();
+        }, 300);
+        return;
+    }
+
+    unifiedUsersSearchTimeout = setTimeout(async () => {
+        await showUsersSearchDropdown(searchValue);
         loadUnifiedUsers();
     }, 300);
 }
 
-function onUnifiedUsersSearchKeydown(event) {
-    if (event.key === 'Enter') {
-        event.preventDefault();
-        clearTimeout(unifiedUsersSearchTimeout);
+// Show dropdown with search results
+async function showUsersSearchDropdown(search) {
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/admin/unified-users?search=${encodeURIComponent(search)}&limit=10`);
+        const data = await response.json();
+
+        if (data.success && data.users && data.users.length > 0) {
+            usersSearchResults = data.users;
+            usersSearchDropdownIndex = -1;
+
+            const dropdown = document.getElementById('users-search-dropdown');
+            dropdown.innerHTML = usersSearchResults.map((user, index) => {
+                const name = user.fullName || `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'N/A';
+                const details = [user.email, user.phone].filter(Boolean).join(' • ') || '';
+                const badges = [];
+                if (user.isAdmin) badges.push('👑 Admin');
+                if (user.isRegistered) badges.push('📱');
+
+                return `<div class="search-dropdown-item" data-index="${index}" onclick="selectUserFromDropdown(${index})">
+                    <div class="name">${name} ${badges.join(' ')}</div>
+                    ${details ? `<div class="details">${details}</div>` : ''}
+                </div>`;
+            }).join('');
+
+            dropdown.style.display = 'block';
+        } else {
+            hideUsersSearchDropdown();
+        }
+    } catch (error) {
+        console.error('Error fetching search results:', error);
+        hideUsersSearchDropdown();
+    }
+}
+
+// Hide dropdown
+function hideUsersSearchDropdown() {
+    const dropdown = document.getElementById('users-search-dropdown');
+    if (dropdown) {
+        dropdown.style.display = 'none';
+    }
+    usersSearchResults = [];
+    usersSearchDropdownIndex = -1;
+}
+
+// Select user from dropdown
+function selectUserFromDropdown(index) {
+    if (usersSearchResults[index]) {
+        const user = usersSearchResults[index];
+        const name = user.fullName || `${user.firstName || ''} ${user.lastName || ''}`.trim();
+        document.getElementById('users-search').value = name;
+        hideUsersSearchDropdown();
         loadUnifiedUsers();
     }
 }
+
+// Keyboard navigation for dropdown
+function onUnifiedUsersSearchKeydown(event) {
+    const dropdown = document.getElementById('users-search-dropdown');
+    const isDropdownVisible = dropdown && dropdown.style.display !== 'none';
+
+    if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        if (isDropdownVisible && usersSearchResults.length > 0) {
+            usersSearchDropdownIndex = Math.min(usersSearchDropdownIndex + 1, usersSearchResults.length - 1);
+            updateDropdownSelection();
+        }
+    } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        if (isDropdownVisible && usersSearchResults.length > 0) {
+            usersSearchDropdownIndex = Math.max(usersSearchDropdownIndex - 1, 0);
+            updateDropdownSelection();
+        }
+    } else if (event.key === 'Enter') {
+        event.preventDefault();
+        if (isDropdownVisible && usersSearchDropdownIndex >= 0) {
+            selectUserFromDropdown(usersSearchDropdownIndex);
+        } else {
+            clearTimeout(unifiedUsersSearchTimeout);
+            hideUsersSearchDropdown();
+            loadUnifiedUsers();
+        }
+    } else if (event.key === 'Escape') {
+        hideUsersSearchDropdown();
+    }
+}
+
+// Update visual selection in dropdown
+function updateDropdownSelection() {
+    const items = document.querySelectorAll('#users-search-dropdown .search-dropdown-item');
+    items.forEach((item, index) => {
+        item.classList.toggle('selected', index === usersSearchDropdownIndex);
+        if (index === usersSearchDropdownIndex) {
+            item.scrollIntoView({ block: 'nearest' });
+        }
+    });
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', function(event) {
+    const container = document.querySelector('.users-search-container');
+    if (container && !container.contains(event.target)) {
+        hideUsersSearchDropdown();
+    }
+});
 
 // Current user type filter
 let currentUserTypeFilter = '';
@@ -4026,6 +4172,7 @@ function openNewUserModal() {
     document.getElementById('user-email').value = '';
     document.getElementById('user-phone').value = '';
     document.getElementById('user-notes').value = '';
+    document.getElementById('reset-password-btn').style.display = 'none';
     document.getElementById('user-modal').style.display = 'flex';
 }
 
@@ -4048,6 +4195,16 @@ async function editUnifiedUser(playerId, userId) {
     document.getElementById('user-email').value = user.email || '';
     document.getElementById('user-phone').value = user.phone || '';
     document.getElementById('user-notes').value = user.notes || '';
+
+    // Show reset password button only for registered users with email
+    const resetBtn = document.getElementById('reset-password-btn');
+    if (user.userId && user.email) {
+        resetBtn.style.display = 'inline-block';
+        resetBtn.dataset.userId = user.userId;
+        resetBtn.dataset.userEmail = user.email;
+    } else {
+        resetBtn.style.display = 'none';
+    }
 
     document.getElementById('user-modal').style.display = 'flex';
 }
@@ -4158,6 +4315,42 @@ async function deleteUnifiedUser(playerId, userId, name) {
     }
 }
 
+// Send password reset email to user
+async function sendPasswordResetEmail() {
+    const resetBtn = document.getElementById('reset-password-btn');
+    const userId = resetBtn.dataset.userId;
+    const userEmail = resetBtn.dataset.userEmail;
+
+    if (!userId || !userEmail) {
+        alert('Utente non valido per il reset password');
+        return;
+    }
+
+    if (!confirm(`Inviare email di reset password a ${userEmail}?`)) return;
+
+    try {
+        resetBtn.disabled = true;
+        resetBtn.textContent = 'Invio...';
+
+        const response = await apiFetch(`${API_BASE_URL}/admin/users/${userId}/send-reset-password`, {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alert('Email di reset password inviata con successo!');
+        } else {
+            alert('Errore: ' + (data.error || 'Invio fallito'));
+        }
+    } catch (error) {
+        alert('Errore: ' + error.message);
+    } finally {
+        resetBtn.disabled = false;
+        resetBtn.textContent = '🔑 Reset Password';
+    }
+}
+
 // Verify user manually (for registered users)
 async function verifyUserManually(userId) {
     if (!confirm('Verificare manualmente questo utente?')) return;
@@ -4180,11 +4373,13 @@ async function verifyUserManually(userId) {
     }
 }
 
-// Toggle admin status for registered user
-async function toggleUserAdmin(userId, currentAdmin) {
+// Toggle admin status for any user (registered or player-only)
+async function toggleUserAdmin(playerId, userId, currentAdmin, email) {
     try {
-        const response = await apiFetch(`${API_BASE_URL}/admin/users/${userId}/toggle-admin`, {
-            method: 'POST'
+        const response = await apiFetch(`${API_BASE_URL}/admin/toggle-admin`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ playerId, userId, email })
         });
         const data = await response.json();
 

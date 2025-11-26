@@ -371,7 +371,7 @@ function setupAuthRoutes(app, pool) {
       // Find user
       const result = await pool.query(
         `SELECT id, name, email, password_hash, user_code, email_verified,
-                is_active, avatar_url, player_id
+                is_active, avatar_url, player_id, is_admin
          FROM users
          WHERE email = $1`,
         [email.toLowerCase()]
@@ -438,7 +438,8 @@ function setupAuthRoutes(app, pool) {
           name: user.name,
           email: user.email,
           userCode: user.user_code,
-          avatarUrl: user.avatar_url
+          avatarUrl: user.avatar_url,
+          isAdmin: user.is_admin === true
         }
       });
 
@@ -679,6 +680,356 @@ function setupAuthRoutes(app, pool) {
       res.status(500).json({
         success: false,
         error: 'Errore nell\'invio email'
+      });
+    }
+  });
+
+  // ==================== PASSWORD RECOVERY ====================
+  app.post('/api/auth/recover-password', async (req, res) => {
+    try {
+      const { email } = req.body;
+
+      if (!email) {
+        return res.status(400).json({
+          success: false,
+          message: 'Email obbligatoria'
+        });
+      }
+
+      // Find user by email
+      const result = await pool.query(
+        'SELECT id, name, email, password_hash FROM users WHERE email = $1 AND is_active = true',
+        [email.toLowerCase()]
+      );
+
+      // Always return success to prevent email enumeration attacks
+      if (result.rows.length === 0) {
+        console.log(`[Auth] Password recovery requested for non-existent email: ${email}`);
+        return res.json({
+          success: true,
+          message: 'Se l\'indirizzo email è registrato, riceverai a breve un messaggio con la tua password.'
+        });
+      }
+
+      const user = result.rows[0];
+
+      // Get email transporter
+      const transporter = getEmailTransporter();
+      if (!transporter) {
+        console.error('[Auth] Cannot send recovery email - SMTP not configured');
+        return res.status(500).json({
+          success: false,
+          message: 'Servizio email non configurato. Contatta il supporto.'
+        });
+      }
+
+      const smtp = global.smtpSettings || {};
+
+      // Note: Sending the actual password is not secure best practice.
+      // We need to retrieve the actual password which is hashed.
+      // Since we can't decrypt the password, we'll generate a new temporary one.
+
+      // Generate a temporary password
+      const tempPassword = crypto.randomBytes(4).toString('hex'); // 8 characters
+
+      // Hash and save the new password
+      const salt = await bcrypt.genSalt(10);
+      const newPasswordHash = await bcrypt.hash(tempPassword, salt);
+
+      await pool.query(
+        'UPDATE users SET password_hash = $1 WHERE id = $2',
+        [newPasswordHash, user.id]
+      );
+
+      // Send email with the new password
+      const mailOptions = {
+        from: `"${smtp.fromName || 'RePlayo'}" <${smtp.from || smtp.user}>`,
+        to: user.email,
+        subject: 'Recupero Password RePlayo',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 12px; overflow: hidden;">
+            <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 30px; text-align: center;">
+              <h1 style="color: #00d9ff; margin: 0; font-size: 32px;">RePlayo</h1>
+              <p style="color: #ffffff; margin: 10px 0 0 0; font-size: 14px;">Recupero Password</p>
+            </div>
+            <div style="padding: 35px 30px; background: #ffffff;">
+              <h2 style="color: #1a1a2e; margin: 0 0 20px 0; font-size: 22px;">Ciao ${user.name}!</h2>
+              <p style="color: #444444; font-size: 16px; line-height: 1.6; margin: 0 0 25px 0;">
+                Hai richiesto il recupero della password del tuo account RePlayo.
+                Abbiamo generato una nuova password temporanea per te:
+              </p>
+              <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0;">
+                <p style="color: #666; margin: 0 0 10px 0; font-size: 14px;">La tua nuova password:</p>
+                <p style="color: #1a1a2e; font-size: 28px; font-weight: bold; margin: 0; letter-spacing: 3px; font-family: monospace;">${tempPassword}</p>
+              </div>
+              <p style="color: #666666; font-size: 14px; line-height: 1.5; margin: 25px 0 10px 0;">
+                Ti consigliamo di cambiare questa password dopo il primo accesso.
+              </p>
+              <p style="color: #888888; font-size: 13px; margin: 20px 0 0 0;">
+                Se non hai richiesto il recupero della password, contatta immediatamente il supporto.
+              </p>
+            </div>
+            <div style="padding: 20px; text-align: center; background: #f8f9fa; border-top: 1px solid #e0e0e0;">
+              <p style="color: #888888; margin: 0; font-size: 12px;">
+                © 2024 RePlayo - Tutti i diritti riservati
+              </p>
+            </div>
+          </div>
+        `
+      };
+
+      await transporter.sendMail(mailOptions);
+      console.log(`[Auth] Password recovery email sent to ${user.email}`);
+
+      res.json({
+        success: true,
+        message: 'Se l\'indirizzo email è registrato, riceverai a breve un messaggio con la tua password.'
+      });
+
+    } catch (error) {
+      console.error('Password recovery error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Errore durante il recupero password'
+      });
+    }
+  });
+
+  // ==================== ADMIN SEND RESET PASSWORD EMAIL ====================
+  app.post('/api/admin/users/:userId/send-reset-password', async (req, res) => {
+    try {
+      const { userId } = req.params;
+
+      // Get user info
+      const userResult = await pool.query(
+        'SELECT id, name, email FROM users WHERE id = $1 AND is_active = true',
+        [userId]
+      );
+
+      if (userResult.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'Utente non trovato'
+        });
+      }
+
+      const user = userResult.rows[0];
+
+      if (!user.email) {
+        return res.status(400).json({
+          success: false,
+          error: 'Utente senza email'
+        });
+      }
+
+      // Generate reset token (valid for 1 hour)
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      const resetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+      // Save reset token
+      await pool.query(
+        `UPDATE users SET password_reset_token = $1, password_reset_expires = $2 WHERE id = $3`,
+        [resetToken, resetExpires, userId]
+      );
+
+      // Get email transporter
+      const transporter = getEmailTransporter();
+      if (!transporter) {
+        return res.status(500).json({
+          success: false,
+          error: 'Servizio email non configurato'
+        });
+      }
+
+      const smtp = global.smtpSettings || {};
+
+      // Deep link URL for the app
+      const resetUrl = `replayo://reset-password?token=${resetToken}`;
+      // Web fallback URL
+      const webResetUrl = `${APP_URL}/reset-password.html?token=${resetToken}`;
+
+      // Send email with reset link
+      const mailOptions = {
+        from: `"${smtp.fromName || 'RePlayo'}" <${smtp.from || smtp.user}>`,
+        to: user.email,
+        subject: 'Reset Password RePlayo',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 12px; overflow: hidden;">
+            <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 30px; text-align: center;">
+              <h1 style="color: #00d9ff; margin: 0; font-size: 32px;">RePlayo</h1>
+              <p style="color: #ffffff; margin: 10px 0 0 0; font-size: 14px;">Reset Password</p>
+            </div>
+            <div style="padding: 35px 30px; background: #ffffff;">
+              <h2 style="color: #1a1a2e; margin: 0 0 20px 0; font-size: 22px;">Ciao ${user.name}!</h2>
+              <p style="color: #444444; font-size: 16px; line-height: 1.6; margin: 0 0 25px 0;">
+                Abbiamo ricevuto una richiesta di reset della password per il tuo account RePlayo.
+                Clicca sul pulsante qui sotto per impostare una nuova password:
+              </p>
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="${resetUrl}"
+                   style="background: linear-gradient(135deg, #00d9ff 0%, #0099cc 100%); color: #ffffff; padding: 16px 40px; text-decoration: none;
+                          border-radius: 8px; font-weight: bold; display: inline-block; font-size: 16px; box-shadow: 0 4px 15px rgba(0, 217, 255, 0.3);">
+                  Reimposta Password
+                </a>
+              </div>
+              <p style="color: #666666; font-size: 14px; line-height: 1.5; margin: 25px 0 10px 0;">
+                Se il pulsante non funziona, copia e incolla questo link nel browser:
+              </p>
+              <p style="color: #0099cc; font-size: 12px; word-break: break-all;">
+                ${webResetUrl}
+              </p>
+              <p style="color: #888888; font-size: 13px; margin: 20px 0 0 0;">
+                Il link scade tra 1 ora. Se non hai richiesto il reset della password, ignora questa email.
+              </p>
+            </div>
+            <div style="padding: 20px; text-align: center; background: #f8f9fa; border-top: 1px solid #e0e0e0;">
+              <p style="color: #888888; margin: 0; font-size: 12px;">
+                © 2024 RePlayo - Tutti i diritti riservati
+              </p>
+            </div>
+          </div>
+        `
+      };
+
+      await transporter.sendMail(mailOptions);
+      console.log(`[Auth] Password reset email sent to ${user.email} by admin`);
+
+      res.json({
+        success: true,
+        message: 'Email di reset password inviata'
+      });
+
+    } catch (error) {
+      console.error('Send reset password error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Errore durante l\'invio email'
+      });
+    }
+  });
+
+  // ==================== VERIFY RESET TOKEN AND SET NEW PASSWORD ====================
+  app.post('/api/auth/reset-password', async (req, res) => {
+    try {
+      const { token, newPassword } = req.body;
+
+      if (!token || !newPassword) {
+        return res.status(400).json({
+          success: false,
+          error: 'Token e nuova password sono obbligatori'
+        });
+      }
+
+      if (newPassword.length < 8) {
+        return res.status(400).json({
+          success: false,
+          error: 'La password deve essere di almeno 8 caratteri'
+        });
+      }
+
+      // Find user with valid reset token
+      const result = await pool.query(
+        `SELECT id, name, email, password_reset_expires
+         FROM users
+         WHERE password_reset_token = $1 AND is_active = true`,
+        [token]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Token non valido o scaduto'
+        });
+      }
+
+      const user = result.rows[0];
+
+      // Check if token is expired
+      if (new Date() > new Date(user.password_reset_expires)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Token scaduto. Richiedi un nuovo reset password.'
+        });
+      }
+
+      // Hash new password
+      const salt = await bcrypt.genSalt(10);
+      const passwordHash = await bcrypt.hash(newPassword, salt);
+
+      // Update password and clear reset token
+      await pool.query(
+        `UPDATE users
+         SET password_hash = $1, password_reset_token = NULL, password_reset_expires = NULL
+         WHERE id = $2`,
+        [passwordHash, user.id]
+      );
+
+      console.log(`[Auth] Password reset successfully for ${user.email}`);
+
+      res.json({
+        success: true,
+        message: 'Password aggiornata con successo! Ora puoi accedere.'
+      });
+
+    } catch (error) {
+      console.error('Reset password error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Errore durante il reset della password'
+      });
+    }
+  });
+
+  // ==================== VERIFY RESET TOKEN (check if valid) ====================
+  app.get('/api/auth/verify-reset-token', async (req, res) => {
+    try {
+      const { token } = req.query;
+
+      if (!token) {
+        return res.status(400).json({
+          success: false,
+          error: 'Token mancante'
+        });
+      }
+
+      // Find user with valid reset token
+      const result = await pool.query(
+        `SELECT id, name, email, password_reset_expires
+         FROM users
+         WHERE password_reset_token = $1 AND is_active = true`,
+        [token]
+      );
+
+      if (result.rows.length === 0) {
+        return res.json({
+          success: false,
+          valid: false,
+          error: 'Token non valido'
+        });
+      }
+
+      const user = result.rows[0];
+
+      // Check if token is expired
+      if (new Date() > new Date(user.password_reset_expires)) {
+        return res.json({
+          success: false,
+          valid: false,
+          error: 'Token scaduto'
+        });
+      }
+
+      res.json({
+        success: true,
+        valid: true,
+        email: user.email
+      });
+
+    } catch (error) {
+      console.error('Verify reset token error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Errore durante la verifica del token'
       });
     }
   });

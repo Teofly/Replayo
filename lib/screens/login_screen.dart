@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../config/app_theme.dart';
 import '../services/user_auth_service.dart';
 import 'register_screen.dart';
+import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -248,6 +249,30 @@ class _LoginScreenState extends State<LoginScreen> {
                             return null;
                           },
                         ).animate().slideX(begin: 0.3, duration: 400.ms, delay: 100.ms),
+
+                        const SizedBox(height: 12),
+
+                        // Forgot password link
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: GestureDetector(
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) => const ForgotPasswordScreen(),
+                                ),
+                              );
+                            },
+                            child: Text(
+                              'Password dimenticata?',
+                              style: GoogleFonts.rajdhani(
+                                color: AppTheme.neonBlue,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ).animate().fadeIn(delay: 150.ms),
 
                         const SizedBox(height: 16),
 

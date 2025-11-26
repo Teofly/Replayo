@@ -1221,6 +1221,14 @@ class _ClubGalleryScreenState extends State<ClubGalleryScreen> {
               onTap: () => _launchUrl(_clubInfo!['website']),
               isClickable: true,
             ),
+
+          // Hours
+          if (_clubInfo!['hours'] != null && _clubInfo!['hours'].toString().isNotEmpty)
+            _buildInfoRow(
+              icon: Icons.access_time,
+              text: _clubInfo!['hours'],
+              isClickable: false,
+            ),
         ],
       ),
     );
