@@ -2830,6 +2830,189 @@ console.log('📅 Booking system API loaded');
 
 
 // ==========================================
+// UNIFIED USERS API - Players + Registered Users
+// ==========================================
+
+// GET /api/admin/unified-users - Lista unificata utenti e giocatori
+app.get('/api/admin/unified-users', async (req, res) => {
+  try {
+    const { search, type } = req.query;
+
+    // Query per ottenere tutti i players con eventuale collegamento a users
+    let query = `
+      SELECT
+        'player' as source,
+        p.id as player_id,
+        u.id as user_id,
+        COALESCE(u.name, p.first_name || ' ' || p.last_name) as name,
+        p.first_name,
+        p.last_name,
+        COALESCE(u.email, p.email) as email,
+        COALESCE(u.phone_number, p.phone) as phone,
+        u.user_code,
+        u.email_verified,
+        u.is_active as user_active,
+        p.is_active as player_active,
+        COALESCE(u.created_at, p.created_at) as created_at,
+        u.last_login,
+        u.social_provider,
+        u.avatar_url,
+        p.notes,
+        CASE WHEN u.id IS NOT NULL THEN true ELSE false END as is_registered,
+        COALESCE(u.is_admin, false) as is_admin
+      FROM players p
+      LEFT JOIN users u ON u.player_id = p.id
+      WHERE p.is_active = true
+
+      UNION ALL
+
+      SELECT
+        'user' as source,
+        NULL as player_id,
+        u.id as user_id,
+        u.name,
+        split_part(u.name, ' ', 1) as first_name,
+        CASE
+          WHEN position(' ' in u.name) > 0 THEN substring(u.name from position(' ' in u.name) + 1)
+          ELSE ''
+        END as last_name,
+        u.email,
+        u.phone_number as phone,
+        u.user_code,
+        u.email_verified,
+        u.is_active as user_active,
+        true as player_active,
+        u.created_at,
+        u.last_login,
+        u.social_provider,
+        u.avatar_url,
+        NULL as notes,
+        true as is_registered,
+        COALESCE(u.is_admin, false) as is_admin
+      FROM users u
+      WHERE u.player_id IS NULL AND u.is_active = true
+    `;
+
+    const params = [];
+    let paramCount = 0;
+
+    // Wrap the UNION query in a subquery for filtering
+    let fullQuery = `SELECT * FROM (${query}) as combined WHERE 1=1`;
+
+    if (search) {
+      paramCount++;
+      fullQuery += ` AND (LOWER(name) LIKE LOWER($${paramCount}) OR LOWER(email) LIKE LOWER($${paramCount}) OR LOWER(phone) LIKE LOWER($${paramCount}) OR LOWER(user_code) LIKE LOWER($${paramCount}))`;
+      params.push('%' + search + '%');
+    }
+
+    if (type === 'registered') {
+      fullQuery += ` AND is_registered = true`;
+    } else if (type === 'players') {
+      fullQuery += ` AND is_registered = false`;
+    }
+
+    fullQuery += ' ORDER BY name ASC';
+
+    const result = await pool.query(fullQuery, params);
+
+    res.json({
+      success: true,
+      users: result.rows.map(row => ({
+        id: row.player_id || row.user_id,
+        playerId: row.player_id,
+        userId: row.user_id,
+        name: row.name,
+        firstName: row.first_name,
+        lastName: row.last_name,
+        email: row.email,
+        phone: row.phone,
+        userCode: row.user_code,
+        emailVerified: row.email_verified,
+        isActive: row.user_active !== false && row.player_active !== false,
+        createdAt: row.created_at,
+        lastLogin: row.last_login,
+        socialProvider: row.social_provider,
+        avatarUrl: row.avatar_url,
+        notes: row.notes,
+        isRegistered: row.is_registered,
+        isAdmin: row.is_admin,
+        source: row.source
+      }))
+    });
+  } catch (error) {
+    console.error('Error fetching unified users:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// GET /api/admin/unified-users-stats - Statistiche unificate
+app.get('/api/admin/unified-users-stats', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        (SELECT COUNT(*) FROM players WHERE is_active = true) +
+        (SELECT COUNT(*) FROM users WHERE player_id IS NULL AND is_active = true) as total,
+        (SELECT COUNT(*) FROM users WHERE is_active = true) as registered,
+        (SELECT COUNT(*) FROM players WHERE is_active = true AND id NOT IN (SELECT player_id FROM users WHERE player_id IS NOT NULL)) as players_only,
+        (SELECT COUNT(*) FROM users WHERE email_verified = true AND is_active = true) as verified
+    `);
+
+    res.json({
+      success: true,
+      stats: {
+        total: parseInt(result.rows[0].total),
+        registered: parseInt(result.rows[0].registered),
+        playersOnly: parseInt(result.rows[0].players_only),
+        verified: parseInt(result.rows[0].verified)
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching unified stats:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/admin/users/:id/toggle-admin - Toggle admin status
+app.post('/api/admin/users/:id/toggle-admin', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Get current admin status
+    const userResult = await pool.query(
+      'SELECT id, email, is_admin FROM users WHERE id = $1',
+      [id]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Utente non trovato' });
+    }
+
+    const currentAdmin = userResult.rows[0].is_admin;
+    const newAdmin = !currentAdmin;
+
+    // Update admin status
+    await pool.query(
+      'UPDATE users SET is_admin = $1 WHERE id = $2',
+      [newAdmin, id]
+    );
+
+    console.log(`[Admin] User ${userResult.rows[0].email} admin status: ${newAdmin}`);
+
+    res.json({
+      success: true,
+      isAdmin: newAdmin,
+      message: newAdmin ? 'Utente promosso ad admin' : 'Privilegi admin rimossi'
+    });
+  } catch (error) {
+    console.error('Error toggling admin:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+console.log('👥 Unified users API loaded');
+
+
+// ==========================================
 // PLAYERS API - Anagrafica Giocatori
 // ==========================================
 

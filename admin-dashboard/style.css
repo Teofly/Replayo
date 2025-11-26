@@ -1063,6 +1063,255 @@ body {
 }
 
 /* ========================================
+   UNIFIED USERS CARDS (stile Anagrafica)
+   ======================================== */
+.user-card {
+    background: var(--bg-card);
+    padding: 1.25rem;
+    border-radius: 12px;
+    border: 1px solid rgba(0, 255, 245, 0.1);
+    margin-bottom: 1rem;
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    transition: all 0.3s ease;
+}
+
+.user-card:hover {
+    border-color: var(--accent-primary);
+    transform: translateY(-2px);
+}
+
+.user-card .user-avatar {
+    width: 50px;
+    height: 50px;
+    min-width: 50px;
+    background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    font-weight: bold;
+    color: var(--bg-dark);
+}
+
+.user-card .user-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.user-card .user-name-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.25rem;
+}
+
+.user-card .user-info h4 {
+    color: var(--text-primary);
+    font-size: 1rem;
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.user-card .user-code-badge {
+    background: rgba(0, 255, 245, 0.15);
+    padding: 2px 8px;
+    border-radius: 4px;
+    color: var(--accent-primary);
+    font-family: monospace;
+    font-size: 0.8rem;
+}
+
+.user-card .user-badges {
+    display: flex;
+    gap: 0.4rem;
+}
+
+.user-card .user-badge {
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.user-card .user-badge.admin {
+    background: rgba(255, 170, 0, 0.25);
+    color: var(--warning);
+    font-weight: 600;
+}
+
+.user-card .user-badge.registered {
+    background: rgba(123, 44, 191, 0.2);
+    color: #b388ff;
+}
+
+.user-card .user-badge.verified {
+    background: rgba(0, 255, 136, 0.15);
+    color: var(--success);
+}
+
+.user-card.is-admin {
+    border-color: var(--warning);
+    box-shadow: 0 0 10px rgba(255, 170, 0, 0.2);
+}
+
+.user-card.is-admin .user-avatar {
+    background: linear-gradient(135deg, var(--warning), #ff6b00);
+}
+
+/* User type filter buttons */
+.user-type-filters {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.user-filter-btn {
+    padding: 8px 16px;
+    border: 1px solid rgba(0, 255, 245, 0.3);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.2s ease;
+}
+
+.user-filter-btn:hover {
+    background: rgba(0, 255, 245, 0.1);
+    border-color: var(--accent-primary);
+    color: var(--text-primary);
+}
+
+.user-filter-btn.active {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    color: var(--bg-dark);
+    font-weight: 500;
+}
+
+/* Autocomplete suggestions for booking form */
+.autocomplete-suggestions {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--bg-dark);
+    border: 1px solid var(--accent-primary);
+    border-radius: 8px;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 1000;
+    margin-top: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.autocomplete-suggestions .suggestion-item {
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    border-bottom: 1px solid rgba(0, 255, 245, 0.1);
+    transition: background 0.2s;
+}
+
+.autocomplete-suggestions .suggestion-item:last-child {
+    border-bottom: none;
+}
+
+.autocomplete-suggestions .suggestion-item:hover,
+.autocomplete-suggestions .suggestion-item.highlighted {
+    background: rgba(0, 255, 245, 0.15);
+}
+
+.autocomplete-suggestions .suggestion-item .suggestion-name {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.autocomplete-suggestions .suggestion-item .suggestion-detail {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+.autocomplete-suggestions .suggestion-item .suggestion-badges {
+    display: inline-flex;
+    gap: 4px;
+    margin-left: 8px;
+}
+
+.autocomplete-suggestions .suggestion-item .suggestion-badge {
+    font-size: 0.65rem;
+    padding: 1px 6px;
+    border-radius: 10px;
+    background: rgba(0, 255, 245, 0.2);
+    color: var(--accent-primary);
+}
+
+.autocomplete-suggestions .no-results {
+    padding: 0.75rem 1rem;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+.user-card .user-contact {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin: 0;
+}
+
+.user-card .user-notes {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    font-style: italic;
+    margin: 0.25rem 0 0 0;
+    opacity: 0.8;
+}
+
+.user-card .user-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+
+@media (max-width: 600px) {
+    .user-card {
+        flex-direction: column;
+        align-items: flex-start;
+        text-align: left;
+    }
+
+    .user-card .user-avatar {
+        margin-bottom: 0.5rem;
+    }
+
+    .user-card .user-info {
+        width: 100%;
+    }
+
+    .user-card .user-name-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+
+    .user-card .user-actions {
+        width: 100%;
+        justify-content: flex-start;
+        margin-top: 0.75rem;
+    }
+}
+
+/* ========================================
    RESPONSIVE - iPhone 16 and smaller phones
    ======================================== */
 @media (max-width: 430px) {
@@ -2045,6 +2294,28 @@ body {
 }
 
 #player-search::placeholder {
+    color: var(--text-secondary);
+}
+
+/* Player notes input - dark theme */
+#player-notes {
+    width: 100%;
+    padding: 0.875rem 1rem;
+    font-size: 1rem;
+    background: var(--bg-dark);
+    border: 1px solid rgba(0, 255, 245, 0.2);
+    border-radius: 8px;
+    color: var(--text-primary);
+    transition: all 0.3s ease;
+}
+
+#player-notes:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 15px rgba(0, 255, 245, 0.3);
+}
+
+#player-notes::placeholder {
     color: var(--text-secondary);
 }
 

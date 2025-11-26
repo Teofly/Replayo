@@ -154,15 +154,15 @@ function navigateTo(page) {
         'overview': 'Overview',
         'bookings': 'Prenotazioni',
         'courts': 'Gestione Campi',
-        'players': 'Anagrafica Giocatori',
         'matches': 'Videos',
         'partitaes': 'Create Match',
         'manage-partitaes': 'Manage Matches',
         'videos': 'Videos',
-        'users': 'Users',
+        'users': 'Utenti',
         'storage': 'Storage',
         'test': 'Test',
-        'club-images': 'InfoClub'
+        'club-images': 'InfoClub',
+        'settings': 'Impostazioni'
     };
     document.getElementById('page-title').textContent = pageTitles[page] || page;
 
@@ -181,8 +181,9 @@ function navigateTo(page) {
         renderCalendar();
     } else if (page === 'courts') {
         loadCourts().then(() => renderCourtsList());
-    } else if (page === 'players') {
-        loadPlayers();
+    } else if (page === 'users') {
+        loadUnifiedUsers();
+        loadUnifiedUsersStats();
     } else if (page === 'club-images') {
         loadClubInfo();
         loadClubImages();
@@ -486,8 +487,8 @@ async function editPlayer(playerId) {
 
     document.getElementById('player-modal-title').textContent = 'Modifica Giocatore';
     document.getElementById('player-id').value = player.id;
-    document.getElementById('player-first-name').value = player.first_name;
-    document.getElementById('player-last-name').value = player.last_name;
+    document.getElementById('player-first-name').value = player.first_name || '';
+    document.getElementById('player-last-name').value = player.last_name || '';
     document.getElementById('player-email').value = player.email || '';
     document.getElementById('player-phone').value = player.phone || '';
     document.getElementById('player-notes').value = player.notes || '';
@@ -1186,7 +1187,7 @@ function setupPlayerSearch() {
 
     if (!searchInput || !suggestionsDiv) return;
 
-    // Search as you type
+    // Search as you type - using unified users API
     searchInput.addEventListener('input', async (e) => {
         const query = e.target.value.trim();
         selectedSuggestionIndex = -1;
@@ -1197,18 +1198,18 @@ function setupPlayerSearch() {
         }
 
         try {
-            const response = await apiFetch(`${API_BASE_URL}/players/search?q=${encodeURIComponent(query)}`);
+            const response = await apiFetch(`${API_BASE_URL}/admin/unified-users?search=${encodeURIComponent(query)}`);
             const data = await response.json();
-            const players = data.players || data || [];
+            const users = data.users || [];
 
-            if (players.length === 0) {
-                suggestionsDiv.innerHTML = '<div style="padding: 0.75rem; color: var(--text-secondary);">Nessun risultato - premi Invio per aggiungere</div>';
+            if (users.length === 0) {
+                suggestionsDiv.innerHTML = '<div class="no-results">Nessun risultato - premi Invio per aggiungere</div>';
             } else {
-                suggestionsDiv.innerHTML = players.map((p, idx) => `
-                    <div class="player-suggestion" data-id="${p.id}" data-name="${p.first_name} ${p.last_name}" data-index="${idx}"
-                         style="padding: 0.75rem; cursor: pointer; border-bottom: 1px solid rgba(0,255,245,0.1);">
-                        <strong>${p.first_name} ${p.last_name}</strong>
-                        <small style="color: var(--text-secondary); margin-left: 0.5rem;">${p.email || p.phone || ''}</small>
+                suggestionsDiv.innerHTML = users.map((u, idx) => `
+                    <div class="player-suggestion suggestion-item" data-id="${u.playerId || u.id}" data-name="${u.name}" data-index="${idx}">
+                        <span class="suggestion-name">${u.name}</span>
+                        ${u.isRegistered ? '<span class="suggestion-badge">App</span>' : ''}
+                        <div class="suggestion-detail">${u.email || ''} ${u.phone ? '| ' + u.phone : ''}</div>
                     </div>
                 `).join('');
 
@@ -1228,7 +1229,7 @@ function setupPlayerSearch() {
             }
             suggestionsDiv.style.display = 'block';
         } catch (error) {
-            console.error('Error searching players:', error);
+            console.error('Error searching users:', error);
         }
     });
 
@@ -1279,6 +1280,125 @@ function setupPlayerSearch() {
             selectedSuggestionIndex = -1;
         }
     });
+}
+
+// Setup customer name autocomplete with auto-fill
+function setupCustomerNameSearch() {
+    const searchInput = document.getElementById('booking-customer-name');
+    const suggestionsDiv = document.getElementById('customer-suggestions');
+
+    if (!searchInput || !suggestionsDiv) return;
+
+    let customerSearchCache = [];
+    let customerSelectedIndex = -1;
+
+    // Search as you type
+    searchInput.addEventListener('input', async (e) => {
+        const query = e.target.value.trim();
+        customerSelectedIndex = -1;
+
+        // Clear email and phone when user starts typing a new name
+        document.getElementById('booking-customer-email').value = '';
+        document.getElementById('booking-customer-phone').value = '';
+
+        if (query.length < 2) {
+            suggestionsDiv.style.display = 'none';
+            return;
+        }
+
+        try {
+            const response = await apiFetch(`${API_BASE_URL}/admin/unified-users?search=${encodeURIComponent(query)}`);
+            const data = await response.json();
+            customerSearchCache = data.users || [];
+
+            if (customerSearchCache.length === 0) {
+                suggestionsDiv.innerHTML = '<div class="no-results">Nessun risultato - usa il nome inserito</div>';
+            } else {
+                suggestionsDiv.innerHTML = customerSearchCache.map((u, idx) => `
+                    <div class="suggestion-item" data-index="${idx}">
+                        <span class="suggestion-name">${u.name}</span>
+                        <span class="suggestion-badges">
+                            ${u.isRegistered ? '<span class="suggestion-badge">App</span>' : ''}
+                            ${u.isAdmin ? '<span class="suggestion-badge" style="background: rgba(255,170,0,0.2); color: var(--warning);">Admin</span>' : ''}
+                        </span>
+                        <div class="suggestion-detail">${u.email || '-'} ${u.phone ? '| ' + u.phone : ''}</div>
+                    </div>
+                `).join('');
+
+                // Add click handlers
+                suggestionsDiv.querySelectorAll('.suggestion-item').forEach(el => {
+                    el.addEventListener('click', () => {
+                        selectCustomer(customerSearchCache[parseInt(el.dataset.index)]);
+                        suggestionsDiv.style.display = 'none';
+                    });
+                    el.addEventListener('mouseover', () => {
+                        customerSelectedIndex = parseInt(el.dataset.index);
+                        updateCustomerHighlight();
+                    });
+                });
+            }
+            suggestionsDiv.style.display = 'block';
+        } catch (error) {
+            console.error('Error searching customers:', error);
+        }
+    });
+
+    // Keyboard navigation
+    searchInput.addEventListener('keydown', (e) => {
+        const items = suggestionsDiv.querySelectorAll('.suggestion-item');
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            if (items.length > 0) {
+                customerSelectedIndex = Math.min(customerSelectedIndex + 1, items.length - 1);
+                updateCustomerHighlight();
+            }
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (items.length > 0) {
+                customerSelectedIndex = Math.max(customerSelectedIndex - 1, 0);
+                updateCustomerHighlight();
+            }
+        } else if (e.key === 'Enter' && suggestionsDiv.style.display === 'block') {
+            e.preventDefault();
+            if (customerSelectedIndex >= 0 && customerSearchCache[customerSelectedIndex]) {
+                selectCustomer(customerSearchCache[customerSelectedIndex]);
+                suggestionsDiv.style.display = 'none';
+                customerSelectedIndex = -1;
+            } else {
+                suggestionsDiv.style.display = 'none';
+            }
+        } else if (e.key === 'Escape') {
+            suggestionsDiv.style.display = 'none';
+            customerSelectedIndex = -1;
+        }
+    });
+
+    // Hide suggestions when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!searchInput.contains(e.target) && !suggestionsDiv.contains(e.target)) {
+            suggestionsDiv.style.display = 'none';
+            customerSelectedIndex = -1;
+        }
+    });
+
+    function updateCustomerHighlight() {
+        const items = suggestionsDiv.querySelectorAll('.suggestion-item');
+        items.forEach((el, idx) => {
+            el.classList.toggle('highlighted', idx === customerSelectedIndex);
+        });
+        // Scroll into view
+        if (customerSelectedIndex >= 0 && items[customerSelectedIndex]) {
+            items[customerSelectedIndex].scrollIntoView({ block: 'nearest' });
+        }
+    }
+
+    function selectCustomer(user) {
+        // Fill in all customer fields
+        document.getElementById('booking-customer-name').value = user.name || '';
+        document.getElementById('booking-customer-email').value = user.email || '';
+        document.getElementById('booking-customer-phone').value = user.phone || '';
+    }
 }
 
 function updateSuggestionHighlight(container) {
@@ -1420,6 +1540,9 @@ function setupModals() {
     // Setup player search for bookings
     setupPlayerSearch();
 
+    // Setup customer name autocomplete
+    setupCustomerNameSearch();
+
     // Cancel booking
     document.getElementById('cancel-booking')?.addEventListener('click', () => {
         document.getElementById('booking-modal').style.display = 'none';
@@ -1461,21 +1584,13 @@ function setupModals() {
     // Court form submit
     document.getElementById('court-form')?.addEventListener('submit', handleCourtSubmit);
 
-    // New player button
-    document.getElementById('new-player-btn')?.addEventListener('click', () => {
-        document.getElementById('player-form').reset();
-        document.getElementById('player-id').value = '';
-        document.getElementById('player-modal-title').textContent = 'Nuovo Giocatore';
-        document.getElementById('player-modal').style.display = 'flex';
+    // New user button (unified users)
+    document.getElementById('new-user-btn')?.addEventListener('click', () => {
+        openNewUserModal();
     });
 
-    // Cancel player
-    document.getElementById('cancel-player')?.addEventListener('click', () => {
-        document.getElementById('player-modal').style.display = 'none';
-    });
-
-    // Player form submit
-    document.getElementById('player-form')?.addEventListener('submit', handlePlayerSubmit);
+    // User form submit (unified users)
+    document.getElementById('user-form')?.addEventListener('submit', saveUnifiedUser);
 
     // Player search - now handled by onPlayerSearchInput() with autocomplete
     // document.getElementById('player-search')?.addEventListener('input', (e) => {
@@ -3743,149 +3858,345 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-// ==================== USERS MANAGEMENT ====================
+// ==================== UNIFIED USERS MANAGEMENT ====================
 
-let usersAutocompleteData = [];
-let usersAutocompleteIndex = -1;
-let usersSearchTimeout = null;
+let unifiedUsersCache = [];
+let unifiedUsersSearchTimeout = null;
 
-async function loadUsersStats() {
+// Load unified users stats
+async function loadUnifiedUsersStats() {
     try {
-        const response = await apiFetch(`${API_BASE_URL}/admin/users-stats`);
+        const response = await apiFetch(`${API_BASE_URL}/admin/unified-users-stats`);
+        const data = await response.json();
+
+        if (data.success && data.stats) {
+            document.getElementById('users-total').textContent = data.stats.total || 0;
+            document.getElementById('users-registered').textContent = data.stats.registered || 0;
+            document.getElementById('users-players-only').textContent = data.stats.playersOnly || 0;
+            document.getElementById('users-verified').textContent = data.stats.verified || 0;
+        }
+    } catch (error) {
+        console.error('Error loading unified users stats:', error);
+    }
+}
+
+// Load unified users list
+async function loadUnifiedUsers() {
+    const search = document.getElementById('users-search')?.value || '';
+    const type = currentUserTypeFilter || '';
+
+    let url = `${API_BASE_URL}/admin/unified-users?`;
+    if (search) url += `search=${encodeURIComponent(search)}&`;
+    if (type) url += `type=${type}&`;
+
+    try {
+        const response = await apiFetch(url);
+        const data = await response.json();
+
+        const container = document.getElementById('users-list');
+
+        if (!data.success || !data.users || data.users.length === 0) {
+            container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 2rem;">Nessun utente trovato</p>';
+            return;
+        }
+
+        unifiedUsersCache = data.users;
+        renderUnifiedUsersList();
+
+    } catch (error) {
+        console.error('Error loading unified users:', error);
+        document.getElementById('users-list').innerHTML =
+            '<p style="color: var(--danger); text-align: center; padding: 2rem;">Errore caricamento utenti</p>';
+    }
+}
+
+// Render unified users as cards (stile Anagrafica)
+function renderUnifiedUsersList() {
+    const container = document.getElementById('users-list');
+    if (!container) return;
+
+    if (unifiedUsersCache.length === 0) {
+        container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 2rem;">Nessun utente trovato</p>';
+        return;
+    }
+
+    container.innerHTML = unifiedUsersCache.map(user => {
+        const initials = getInitials(user.firstName, user.lastName, user.name);
+        const badges = [];
+
+        // Badge Admin (priorità alta)
+        if (user.isAdmin) {
+            badges.push(`<span class="user-badge admin">Admin</span>`);
+        }
+
+        if (user.isRegistered) {
+            badges.push(`<span class="user-badge registered">App</span>`);
+            if (user.emailVerified) {
+                badges.push(`<span class="user-badge verified">Verificato</span>`);
+            }
+        }
+
+        const userCode = user.userCode ? `<span class="user-code-badge">${user.userCode}</span>` : '';
+
+        // Bottone toggle admin (solo per utenti registrati)
+        const adminToggleBtn = user.isRegistered && user.userId
+            ? `<button class="btn ${user.isAdmin ? 'btn-warning' : 'btn-secondary'} btn-small" onclick="toggleUserAdmin('${user.userId}', ${user.isAdmin})">${user.isAdmin ? 'Rimuovi Admin' : 'Rendi Admin'}</button>`
+            : '';
+
+        return `
+            <div class="user-card ${user.isAdmin ? 'is-admin' : ''}" data-id="${user.id}" data-player-id="${user.playerId || ''}" data-user-id="${user.userId || ''}">
+                <div class="user-avatar">${initials}</div>
+                <div class="user-info">
+                    <div class="user-name-row">
+                        <h4>${user.name || '-'}</h4>
+                        ${userCode}
+                        <div class="user-badges">${badges.join('')}</div>
+                    </div>
+                    <p class="user-contact">
+                        ${user.email ? `<span>${user.email}</span>` : ''}
+                        ${user.email && user.phone ? ' | ' : ''}
+                        ${user.phone ? `<span>${user.phone}</span>` : ''}
+                    </p>
+                    ${user.notes ? `<p class="user-notes">${user.notes}</p>` : ''}
+                </div>
+                <div class="user-actions">
+                    <button class="btn btn-primary btn-small" onclick="editUnifiedUser('${user.playerId || ''}', '${user.userId || ''}')">Modifica</button>
+                    ${adminToggleBtn}
+                    ${user.isRegistered && !user.emailVerified ? `<button class="btn btn-success btn-small" onclick="verifyUserManually('${user.userId}')">Verifica</button>` : ''}
+                    <button class="btn btn-danger btn-small" onclick="deleteUnifiedUser('${user.playerId || ''}', '${user.userId || ''}', '${user.name}')">Elimina</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// Get initials from name
+function getInitials(firstName, lastName, fullName) {
+    if (firstName && lastName) {
+        return (firstName[0] || '?') + (lastName[0] || '');
+    }
+    if (fullName) {
+        const parts = fullName.trim().split(' ');
+        if (parts.length >= 2) {
+            return (parts[0][0] || '?') + (parts[parts.length - 1][0] || '');
+        }
+        return (fullName[0] || '?').toUpperCase();
+    }
+    return '?';
+}
+
+// Search input handler
+function onUnifiedUsersSearchInput() {
+    clearTimeout(unifiedUsersSearchTimeout);
+    unifiedUsersSearchTimeout = setTimeout(() => {
+        loadUnifiedUsers();
+    }, 300);
+}
+
+function onUnifiedUsersSearchKeydown(event) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        clearTimeout(unifiedUsersSearchTimeout);
+        loadUnifiedUsers();
+    }
+}
+
+// Current user type filter
+let currentUserTypeFilter = '';
+
+// Filter users by type (button click)
+function filterUsersByType(type) {
+    currentUserTypeFilter = type;
+
+    // Update button states
+    document.querySelectorAll('.user-filter-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.type === type);
+    });
+
+    loadUnifiedUsers();
+}
+
+// Open modal for new user
+function openNewUserModal() {
+    document.getElementById('user-modal-title').textContent = 'Nuovo Utente';
+    document.getElementById('user-edit-id').value = '';
+    document.getElementById('user-edit-type').value = 'new';
+    document.getElementById('user-first-name').value = '';
+    document.getElementById('user-last-name').value = '';
+    document.getElementById('user-email').value = '';
+    document.getElementById('user-phone').value = '';
+    document.getElementById('user-notes').value = '';
+    document.getElementById('user-modal').style.display = 'flex';
+}
+
+// Edit unified user
+async function editUnifiedUser(playerId, userId) {
+    const user = unifiedUsersCache.find(u =>
+        (playerId && u.playerId == playerId) || (userId && u.userId == userId)
+    );
+
+    if (!user) {
+        alert('Utente non trovato');
+        return;
+    }
+
+    document.getElementById('user-modal-title').textContent = 'Modifica Utente';
+    document.getElementById('user-edit-id').value = playerId || userId;
+    document.getElementById('user-edit-type').value = playerId ? 'player' : 'user';
+    document.getElementById('user-first-name').value = user.firstName || '';
+    document.getElementById('user-last-name').value = user.lastName || '';
+    document.getElementById('user-email').value = user.email || '';
+    document.getElementById('user-phone').value = user.phone || '';
+    document.getElementById('user-notes').value = user.notes || '';
+
+    document.getElementById('user-modal').style.display = 'flex';
+}
+
+// Save user (create or update)
+async function saveUnifiedUser(event) {
+    event.preventDefault();
+
+    const id = document.getElementById('user-edit-id').value;
+    const type = document.getElementById('user-edit-type').value;
+    const firstName = document.getElementById('user-first-name').value.trim();
+    const lastName = document.getElementById('user-last-name').value.trim();
+    const email = document.getElementById('user-email').value.trim();
+    const phone = document.getElementById('user-phone').value.trim();
+    const notes = document.getElementById('user-notes').value.trim();
+
+    if (!firstName) {
+        alert('Il nome è obbligatorio');
+        return;
+    }
+
+    try {
+        let response;
+
+        if (type === 'new' || type === 'player' || !id) {
+            // Create or update player
+            const url = id && type === 'player'
+                ? `${API_BASE_URL}/players/${id}`
+                : `${API_BASE_URL}/players`;
+
+            response = await apiFetch(url, {
+                method: id && type === 'player' ? 'PUT' : 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    first_name: firstName,
+                    last_name: lastName,
+                    email: email || null,
+                    phone: phone || null,
+                    notes: notes || null
+                })
+            });
+        } else if (type === 'user') {
+            // Update registered user
+            response = await apiFetch(`${API_BASE_URL}/admin/users/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: `${firstName} ${lastName}`.trim(),
+                    email: email || null,
+                    phone: phone || null
+                })
+            });
+        }
+
+        const data = await response.json();
+
+        if (data.success || data.player || data.user) {
+            document.getElementById('user-modal').style.display = 'none';
+            loadUnifiedUsers();
+            loadUnifiedUsersStats();
+        } else {
+            alert('Errore: ' + (data.error || 'Operazione fallita'));
+        }
+    } catch (error) {
+        alert('Errore: ' + error.message);
+    }
+}
+
+// Delete unified user
+async function deleteUnifiedUser(playerId, userId, name) {
+    if (!confirm(`Eliminare "${name}"?`)) return;
+
+    try {
+        // If has player_id, delete the player (soft delete)
+        if (playerId) {
+            const response = await apiFetch(`${API_BASE_URL}/players/${playerId}`, {
+                method: 'DELETE'
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                loadUnifiedUsers();
+                loadUnifiedUsersStats();
+                return;
+            }
+        }
+
+        // If only user (no player linked), delete user
+        if (userId && !playerId) {
+            if (!confirm('Questo eliminerà definitivamente l\'utente registrato. Confermi?')) return;
+
+            const response = await apiFetch(`${API_BASE_URL}/admin/users/${userId}`, {
+                method: 'DELETE'
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                loadUnifiedUsers();
+                loadUnifiedUsersStats();
+                alert('Utente eliminato');
+                return;
+            }
+        }
+
+        alert('Errore durante l\'eliminazione');
+    } catch (error) {
+        alert('Errore: ' + error.message);
+    }
+}
+
+// Verify user manually (for registered users)
+async function verifyUserManually(userId) {
+    if (!confirm('Verificare manualmente questo utente?')) return;
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/admin/users/${userId}/verify-email`, {
+            method: 'POST'
+        });
         const data = await response.json();
 
         if (data.success) {
-            document.getElementById('users-total').textContent = data.stats.total || 0;
-            document.getElementById('users-verified').textContent = data.stats.verified || 0;
-            document.getElementById('users-pending').textContent = data.stats.pending || 0;
-            document.getElementById('users-inactive').textContent = data.stats.inactive || 0;
+            alert('Utente verificato!');
+            loadUnifiedUsers();
+            loadUnifiedUsersStats();
+        } else {
+            alert('Errore: ' + (data.error || 'Verifica fallita'));
         }
     } catch (error) {
-        console.error('Error loading users stats:', error);
+        alert('Errore: ' + error.message);
     }
 }
 
-// Autocomplete search functions
-function onUsersSearchInput() {
-    clearTimeout(usersSearchTimeout);
-    const search = document.getElementById('users-search').value;
-
-    if (search.length < 1) {
-        hideUsersAutocomplete();
-        loadUsers();
-        return;
-    }
-
-    usersSearchTimeout = setTimeout(() => {
-        searchUsersAutocomplete(search);
-    }, 200);
-}
-
-async function searchUsersAutocomplete(search) {
+// Toggle admin status for registered user
+async function toggleUserAdmin(userId, currentAdmin) {
     try {
-        const response = await apiFetch(`${API_BASE_URL}/admin/users?search=${encodeURIComponent(search)}`);
+        const response = await apiFetch(`${API_BASE_URL}/admin/users/${userId}/toggle-admin`, {
+            method: 'POST'
+        });
         const data = await response.json();
 
-        if (data.success && data.users) {
-            usersAutocompleteData = data.users;
-            showUsersAutocomplete(data.users);
+        if (data.success) {
+            loadUnifiedUsers();
+        } else {
+            alert('Errore: ' + (data.error || 'Operazione fallita'));
         }
     } catch (error) {
-        console.error('Autocomplete error:', error);
+        alert('Errore: ' + error.message);
     }
 }
-
-function showUsersAutocomplete(users) {
-    const dropdown = document.getElementById('users-autocomplete');
-
-    if (users.length === 0) {
-        dropdown.innerHTML = '<div class="autocomplete-item" style="color: #888;">Nessun utente trovato</div>';
-        dropdown.style.display = 'block';
-        return;
-    }
-
-    dropdown.innerHTML = users.slice(0, 10).map((user, index) => `
-        <div class="autocomplete-item ${index === usersAutocompleteIndex ? 'selected' : ''}"
-             onclick="selectUserFromAutocomplete(${index})"
-             data-index="${index}">
-            <div class="user-avatar-sm">${(user.name || 'U').charAt(0).toUpperCase()}</div>
-            <div class="user-info-ac">
-                <div class="user-name-ac">${user.name || '-'}</div>
-                <div class="user-email-ac">${user.email}</div>
-            </div>
-            <span class="user-code-ac">${user.userCode || '-'}</span>
-            <span class="user-status-ac ${user.emailVerified ? 'verified' : 'pending'}">
-                ${user.emailVerified ? 'Verificato' : 'In attesa'}
-            </span>
-        </div>
-    `).join('');
-
-    dropdown.style.display = 'block';
-    usersAutocompleteIndex = -1;
-}
-
-function hideUsersAutocomplete() {
-    const dropdown = document.getElementById('users-autocomplete');
-    if (dropdown) {
-        dropdown.style.display = 'none';
-    }
-    usersAutocompleteIndex = -1;
-}
-
-function selectUserFromAutocomplete(index) {
-    const user = usersAutocompleteData[index];
-    if (user) {
-        document.getElementById('users-search').value = user.email;
-        hideUsersAutocomplete();
-        loadUsers();
-    }
-}
-
-function onUsersSearchKeydown(event) {
-    const dropdown = document.getElementById('users-autocomplete');
-    const items = dropdown.querySelectorAll('.autocomplete-item[data-index]');
-
-    if (event.key === 'ArrowDown') {
-        event.preventDefault();
-        usersAutocompleteIndex = Math.min(usersAutocompleteIndex + 1, items.length - 1);
-        updateUsersAutocompleteSelection(items);
-    } else if (event.key === 'ArrowUp') {
-        event.preventDefault();
-        usersAutocompleteIndex = Math.max(usersAutocompleteIndex - 1, 0);
-        updateUsersAutocompleteSelection(items);
-    } else if (event.key === 'Enter') {
-        event.preventDefault();
-        if (usersAutocompleteIndex >= 0 && usersAutocompleteData[usersAutocompleteIndex]) {
-            selectUserFromAutocomplete(usersAutocompleteIndex);
-        } else {
-            hideUsersAutocomplete();
-            loadUsers();
-        }
-    } else if (event.key === 'Escape') {
-        hideUsersAutocomplete();
-    }
-}
-
-function updateUsersAutocompleteSelection(items) {
-    items.forEach((item, i) => {
-        item.classList.toggle('selected', i === usersAutocompleteIndex);
-    });
-
-    // Scroll selected into view
-    if (usersAutocompleteIndex >= 0 && items[usersAutocompleteIndex]) {
-        items[usersAutocompleteIndex].scrollIntoView({ block: 'nearest' });
-    }
-}
-
-// Close autocomplete when clicking outside
-document.addEventListener('click', (e) => {
-    if (!e.target.closest('#users-search') && !e.target.closest('#users-autocomplete')) {
-        hideUsersAutocomplete();
-    }
-    if (!e.target.closest('#player-search') && !e.target.closest('#players-autocomplete')) {
-        hidePlayersAutocomplete();
-    }
-});
 
 // ==================== PLAYERS AUTOCOMPLETE ====================
 
@@ -4011,227 +4322,6 @@ function updatePlayersAutocompleteSelection(items) {
     }
 }
 
-async function loadUsers() {
-    const search = document.getElementById('users-search')?.value || '';
-    const verified = document.getElementById('users-filter-verified')?.value || '';
-
-    let url = `${API_BASE_URL}/admin/users?`;
-    if (search) url += `search=${encodeURIComponent(search)}&`;
-    if (verified) url += `verified=${verified}&`;
-
-    try {
-        const response = await apiFetch(url);
-        const data = await response.json();
-
-        const tbody = document.getElementById('users-table-body');
-
-        if (!data.success || !data.users || data.users.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem; color: #888;">Nessun utente trovato</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = data.users.map(user => `
-            <tr>
-                <td>
-                    <div class="user-cell">
-                        <div class="user-avatar">${(user.name || 'U').charAt(0).toUpperCase()}</div>
-                        <div class="user-info">
-                            <div class="user-name">${user.name || '-'}</div>
-                            <div class="user-phone">${user.phone_number || ''}</div>
-                        </div>
-                    </div>
-                </td>
-                <td style="color: #ccc;">${user.email}</td>
-                <td><span class="user-code">${user.userCode || '-'}</span></td>
-                <td>
-                    <span class="status-badge ${user.emailVerified ? 'status-verified' : 'status-pending'}">
-                        ${user.emailVerified ? 'Verificato' : 'In attesa'}
-                    </span>
-                    ${!user.isActive ? '<div class="status-badge status-inactive">Disattivato</div>' : ''}
-                </td>
-                <td style="font-size: 0.85rem; color: #888;">${formatDateTimeUsers(user.createdAt)}</td>
-                <td>
-                    <div class="actions-cell">
-                        <div class="actions-row">
-                            <button class="btn btn-sm btn-info btn-action" onclick="editUser('${user.id}')">Modifica</button>
-                            <button class="btn btn-sm ${user.isActive ? 'btn-secondary' : 'btn-success'} btn-action" onclick="toggleUserActive('${user.id}', ${user.isActive})">
-                                ${user.isActive ? 'Disattiva' : 'Attiva'}
-                            </button>
-                        </div>
-                        <div class="actions-row">
-                            ${!user.emailVerified ? `<button class="btn btn-sm btn-primary btn-action" onclick="sendVerificationEmail('${user.id}')">Email</button>` : ''}
-                            ${!user.emailVerified ? `<button class="btn btn-sm btn-success btn-action" onclick="verifyUserManually('${user.id}')">Verifica</button>` : ''}
-                            <button class="btn btn-sm btn-danger btn-action" onclick="deleteUser('${user.id}', '${user.email}')">Elimina</button>
-                        </div>
-                    </div>
-                </td>
-            </tr>
-        `).join('');
-
-    } catch (error) {
-        console.error('Error loading users:', error);
-        document.getElementById('users-table-body').innerHTML =
-            '<tr><td colspan="6" style="text-align: center; padding: 2rem; color: #f44336;">Errore caricamento utenti</td></tr>';
-    }
-}
-
-async function sendVerificationEmail(userId) {
-    if (!confirm('Inviare email di verifica?')) return;
-
-    try {
-        const response = await apiFetch(`${API_BASE_URL}/admin/users/${userId}/send-verification`, {
-            method: 'POST'
-        });
-        const data = await response.json();
-
-        if (data.success) {
-            alert('Email di verifica inviata!');
-        } else {
-            alert('Errore: ' + (data.error || 'Invio fallito'));
-        }
-    } catch (error) {
-        alert('Errore: ' + error.message);
-    }
-}
-
-async function verifyUserManually(userId) {
-    if (!confirm('Verificare manualmente questo utente?')) return;
-
-    try {
-        const response = await apiFetch(`${API_BASE_URL}/admin/users/${userId}/verify-email`, {
-            method: 'POST'
-        });
-        const data = await response.json();
-
-        if (data.success) {
-            alert('Utente verificato!');
-            loadUsers();
-            loadUsersStats();
-        } else {
-            alert('Errore: ' + (data.error || 'Verifica fallita'));
-        }
-    } catch (error) {
-        alert('Errore: ' + error.message);
-    }
-}
-
-async function toggleUserActive(userId, currentActive) {
-    const action = currentActive ? 'disattivare' : 'attivare';
-    if (!confirm(`Vuoi ${action} questo utente?`)) return;
-
-    try {
-        const response = await apiFetch(`${API_BASE_URL}/admin/users/${userId}/toggle-active`, {
-            method: 'POST'
-        });
-        const data = await response.json();
-
-        if (data.success) {
-            loadUsers();
-            loadUsersStats();
-        } else {
-            alert('Errore: ' + (data.error || 'Operazione fallita'));
-        }
-    } catch (error) {
-        alert('Errore: ' + error.message);
-    }
-}
-
-async function deleteUser(userId, email) {
-    if (!confirm(`Eliminare definitivamente l'utente ${email}?`)) return;
-    if (!confirm('Questa azione e irreversibile. Confermi?')) return;
-
-    try {
-        const response = await apiFetch(`${API_BASE_URL}/admin/users/${userId}`, {
-            method: 'DELETE'
-        });
-        const data = await response.json();
-
-        if (data.success) {
-            alert('Utente eliminato');
-            loadUsers();
-            loadUsersStats();
-        } else {
-            alert('Errore: ' + (data.error || 'Eliminazione fallita'));
-        }
-    } catch (error) {
-        alert('Errore: ' + error.message);
-    }
-}
-
-// Edit user modal
-let editingUserId = null;
-
-async function editUser(userId) {
-    try {
-        const response = await apiFetch(`${API_BASE_URL}/admin/users/${userId}`);
-        const data = await response.json();
-
-        if (!data.success || !data.user) {
-            alert('Errore: Utente non trovato');
-            return;
-        }
-
-        const user = data.user;
-        editingUserId = userId;
-
-        document.getElementById('edit-user-name').value = user.name || '';
-        document.getElementById('edit-user-email').value = user.email || '';
-        document.getElementById('edit-user-phone').value = user.phone || '';
-
-        document.getElementById('edit-user-modal').style.display = 'flex';
-    } catch (error) {
-        alert('Errore: ' + error.message);
-    }
-}
-
-function closeEditUserModal() {
-    document.getElementById('edit-user-modal').style.display = 'none';
-    editingUserId = null;
-}
-
-async function saveUserEdit() {
-    if (!editingUserId) return;
-
-    const name = document.getElementById('edit-user-name').value.trim();
-    const email = document.getElementById('edit-user-email').value.trim();
-    const phone = document.getElementById('edit-user-phone').value.trim();
-
-    if (!name) {
-        alert('Il nome è obbligatorio');
-        return;
-    }
-
-    try {
-        const response = await apiFetch(`${API_BASE_URL}/admin/users/${editingUserId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, email, phone })
-        });
-        const data = await response.json();
-
-        if (data.success) {
-            closeEditUserModal();
-            loadUsers();
-            alert('Utente aggiornato');
-        } else {
-            alert('Errore: ' + (data.error || 'Aggiornamento fallito'));
-        }
-    } catch (error) {
-        alert('Errore: ' + error.message);
-    }
-}
-
-function formatDateTimeUsers(dateStr) {
-    if (!dateStr) return '-';
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('it-IT', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-    });
-}
 
 // ==================== SMTP SETTINGS ====================
 

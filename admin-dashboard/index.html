@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RePlayo Admin Dashboard</title>
     <link rel="icon" type="image/png" href="replayo-logo.png">
-    <link rel="stylesheet" href="style.css?v=20251125h">
+    <link rel="stylesheet" href="style.css?v=20251126e">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
@@ -25,7 +25,6 @@
             </div>
             <nav class="nav">
                 <a href="#" class="nav-item active" data-page="bookings">📅 Prenotazioni</a>
-                <a href="#" class="nav-item" data-page="players">👤 Anagrafica</a>
                 <a href="#" class="nav-item" data-page="users">👥 Utenti</a>
                 <a href="#" class="nav-item" data-page="courts">🏟️ Campi</a>
                 <a href="#" class="nav-item" data-page="matches">📹 Videos</a>
@@ -93,29 +92,29 @@
                     </div>
                 </div>
 
-                <!-- Users Page -->
+                <!-- Users Page (Unified: Players + Registered Users) -->
                 <div id="page-users" class="page">
                     <div class="section">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                            <h3 style="margin: 0; font-size: 1.5rem;">Utenti Registrati</h3>
-                            <button class="btn btn-secondary" onclick="loadUsers(); loadUsersStats();" title="Aggiorna lista">
-                                <span style="margin-right: 5px;">🔄</span> Aggiorna
-                            </button>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+                            <h3 style="margin-bottom: 0;">Utenti</h3>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button class="btn btn-secondary" onclick="loadUnifiedUsers()">🔄 Aggiorna</button>
+                                <button class="btn btn-primary" id="new-user-btn">+ Nuovo Utente</button>
+                            </div>
                         </div>
 
-                        <!-- Search Bar -->
+                        <!-- Search & Filters -->
                         <div style="margin-bottom: 1.5rem;">
                             <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: center;">
-                                <div style="position: relative; flex: 1; min-width: 300px;">
-                                    <input type="text" id="users-search" placeholder="Cerca per nome, email o codice..."
-                                           oninput="onUsersSearchInput()" onkeydown="onUsersSearchKeydown(event)">
-                                    <div id="users-autocomplete" class="autocomplete-dropdown" style="display: none;"></div>
+                                <div style="position: relative; flex: 1; min-width: 250px;">
+                                    <input type="text" id="users-search" placeholder="Cerca per nome, email, telefono o codice..."
+                                           oninput="onUnifiedUsersSearchInput()" onkeydown="onUnifiedUsersSearchKeydown(event)">
                                 </div>
-                                <select id="users-filter-verified" onchange="loadUsers()">
-                                    <option value="">Tutti gli stati</option>
-                                    <option value="true">Verificati</option>
-                                    <option value="false">Non verificati</option>
-                                </select>
+                                <div class="user-type-filters">
+                                    <button class="user-filter-btn active" data-type="" onclick="filterUsersByType('')">Tutti</button>
+                                    <button class="user-filter-btn" data-type="registered" onclick="filterUsersByType('registered')">Registrati</button>
+                                    <button class="user-filter-btn" data-type="players" onclick="filterUsersByType('players')">Anagrafica</button>
+                                </div>
                             </div>
                         </div>
 
@@ -125,67 +124,36 @@
                                 <div class="stat-icon">👥</div>
                                 <div class="stat-info">
                                     <h3 id="users-total">-</h3>
-                                    <p>Totale Utenti</p>
+                                    <p>Totale</p>
+                                </div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-icon">📱</div>
+                                <div class="stat-info">
+                                    <h3 id="users-registered">-</h3>
+                                    <p>Registrati App</p>
+                                </div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-icon">📋</div>
+                                <div class="stat-info">
+                                    <h3 id="users-players-only">-</h3>
+                                    <p>Solo Anagrafica</p>
                                 </div>
                             </div>
                             <div class="stat-card">
                                 <div class="stat-icon">✅</div>
                                 <div class="stat-info">
                                     <h3 id="users-verified">-</h3>
-                                    <p>Verificati</p>
-                                </div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-icon">⏳</div>
-                                <div class="stat-info">
-                                    <h3 id="users-pending">-</h3>
-                                    <p>In attesa</p>
-                                </div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-icon">🚫</div>
-                                <div class="stat-info">
-                                    <h3 id="users-inactive">-</h3>
-                                    <p>Disattivati</p>
+                                    <p>Email Verificata</p>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Users Table -->
-                        <div class="table-container" style="overflow-x: auto;">
-                            <table class="data-table users-table">
-                                <thead>
-                                    <tr>
-                                        <th style="min-width: 180px;">Utente</th>
-                                        <th style="min-width: 200px;">Email</th>
-                                        <th style="min-width: 100px;">Codice</th>
-                                        <th style="min-width: 100px;">Stato</th>
-                                        <th style="min-width: 120px;">Registrato</th>
-                                        <th style="min-width: 200px;">Azioni</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="users-table-body">
-                                    <tr><td colspan="6" style="text-align: center; padding: 2rem;">Caricamento...</td></tr>
-                                </tbody>
-                            </table>
+                        <!-- Users Cards List -->
+                        <div id="users-list">
+                            <p style="color: var(--text-secondary); text-align: center; padding: 2rem;">Caricamento...</p>
                         </div>
-
-                        <style>
-                            .users-table td { padding: 12px 10px; vertical-align: middle; }
-                            .users-table .user-cell { display: flex; align-items: center; gap: 12px; }
-                            .users-table .user-avatar { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #00d9ff 0%, #00b4d8 100%); display: flex; align-items: center; justify-content: center; color: #1a1a2e; font-weight: bold; font-size: 16px; flex-shrink: 0; }
-                            .users-table .user-info { min-width: 0; }
-                            .users-table .user-name { font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-                            .users-table .user-phone { font-size: 0.85rem; color: #888; }
-                            .users-table .user-code { background: rgba(0,217,255,0.15); padding: 4px 10px; border-radius: 6px; color: #00d9ff; font-family: monospace; font-size: 0.9rem; }
-                            .users-table .status-badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 0.85rem; font-weight: 500; }
-                            .users-table .status-verified { background: rgba(76, 175, 80, 0.2); color: #4caf50; }
-                            .users-table .status-pending { background: rgba(255, 152, 0, 0.2); color: #ff9800; }
-                            .users-table .status-inactive { background: rgba(244, 67, 54, 0.2); color: #f44336; margin-top: 4px; }
-                            .users-table .actions-cell { display: flex; flex-direction: column; gap: 6px; }
-                            .users-table .actions-row { display: flex; gap: 6px; }
-                            .users-table .btn-action { padding: 6px 12px; font-size: 0.8rem; border-radius: 6px; white-space: nowrap; min-width: 80px; text-align: center; }
-                        </style>
                     </div>
                 </div>
 
@@ -424,21 +392,6 @@
                     </div>
                 </div>
 
-                <!-- Players Page -->
-                <div id="page-players" class="page">
-                    <div class="section">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-                            <h3 style="margin-bottom: 0;">Anagrafica Giocatori</h3>
-                            <button class="btn btn-primary" id="new-player-btn">+ Nuovo Giocatore</button>
-                        </div>
-                        <div style="margin-bottom: 1.5rem; position: relative;">
-                            <input type="text" id="player-search" placeholder="Cerca giocatore per nome, email o telefono..."
-                                   oninput="onPlayerSearchInput()" onkeydown="onPlayerSearchKeydown(event)">
-                            <div id="players-autocomplete" class="autocomplete-dropdown" style="display: none;"></div>
-                        </div>
-                        <div id="players-list"></div>
-                    </div>
-                </div>
 
                 <!-- Matches Page -->
                 <div id="page-matches" class="page">
@@ -750,9 +703,10 @@
                     </div>
                 </div>
                 <div class="form-row">
-                    <div class="form-group">
+                    <div class="form-group" style="position: relative;">
                         <label>Nome Riferimento</label>
-                        <input type="text" id="booking-customer-name" required placeholder="Nome cliente">
+                        <input type="text" id="booking-customer-name" required placeholder="Cerca o inserisci nome..." autocomplete="off">
+                        <div id="customer-suggestions" class="autocomplete-suggestions"></div>
                     </div>
                     <div class="form-group">
                         <label>Email</label>
@@ -765,10 +719,10 @@
                         <input type="tel" id="booking-customer-phone" placeholder="+39 333 1234567">
                     </div>
                 </div>
-                <div class="form-group">
+                <div class="form-group" style="position: relative;">
                     <label>Giocatori (cerca nell'anagrafica)</label>
                     <input type="text" id="booking-player-search" placeholder="Cerca giocatore..." autocomplete="off">
-                    <div id="player-suggestions" style="display: none; background: var(--bg-dark); border: 1px solid var(--accent-primary); border-radius: 8px; max-height: 150px; overflow-y: auto; margin-top: 4px;"></div>
+                    <div id="player-suggestions" class="autocomplete-suggestions"></div>
                     <div id="selected-players" style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem;"></div>
                     <small style="color: var(--text-secondary);">Clicca sui suggerimenti o premi Invio per aggiungere un nome libero</small>
                 </div>
@@ -833,39 +787,40 @@
         </div>
     </div>
 
-    <!-- Player Modal -->
-    <div id="player-modal" class="modal" style="display: none;">
+    <!-- User Modal (for creating/editing users) -->
+    <div id="user-modal" class="modal" style="display: none;">
         <div class="modal-content">
-            <h3 id="player-modal-title">Nuovo Giocatore</h3>
-            <form id="player-form" class="form">
-                <input type="hidden" id="player-id">
+            <h3 id="user-modal-title">Nuovo Utente</h3>
+            <form id="user-form" class="form">
+                <input type="hidden" id="user-edit-id">
+                <input type="hidden" id="user-edit-type">
                 <div class="form-row">
                     <div class="form-group">
                         <label>Nome</label>
-                        <input type="text" id="player-first-name" required placeholder="Mario">
+                        <input type="text" id="user-first-name" required placeholder="Mario">
                     </div>
                     <div class="form-group">
                         <label>Cognome</label>
-                        <input type="text" id="player-last-name" required placeholder="Rossi">
+                        <input type="text" id="user-last-name" placeholder="Rossi">
                     </div>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
                         <label>Email</label>
-                        <input type="email" id="player-email" placeholder="mario@esempio.it">
+                        <input type="email" id="user-email" placeholder="mario@esempio.it">
                     </div>
                     <div class="form-group">
                         <label>Telefono</label>
-                        <input type="tel" id="player-phone" placeholder="+39 333 1234567">
+                        <input type="tel" id="user-phone" placeholder="+39 333 1234567">
                     </div>
                 </div>
                 <div class="form-group">
                     <label>Note</label>
-                    <input type="text" id="player-notes" placeholder="Note aggiuntive...">
+                    <input type="text" id="user-notes" placeholder="Note aggiuntive...">
                 </div>
                 <div style="display: flex; gap: 1rem;">
                     <button type="submit" class="btn btn-primary">Salva</button>
-                    <button type="button" class="btn btn-secondary" id="cancel-player" onclick="document.getElementById('player-modal').style.display='none'">Annulla</button>
+                    <button type="button" class="btn btn-secondary" onclick="document.getElementById('user-modal').style.display='none'">Annulla</button>
                 </div>
             </form>
         </div>
@@ -947,30 +902,6 @@
         </div>
     </div>
 
-    <!-- Edit User Modal -->
-    <div id="edit-user-modal" class="modal" style="display: none;">
-        <div class="modal-content" style="max-width: 500px;">
-            <h3 style="margin: 0 0 1.5rem 0;">Modifica Utente</h3>
-            <form class="form" onsubmit="event.preventDefault(); saveUserEdit();">
-                <div class="form-group">
-                    <label>Nome</label>
-                    <input type="text" id="edit-user-name" required placeholder="Nome utente">
-                </div>
-                <div class="form-group">
-                    <label>Email</label>
-                    <input type="email" id="edit-user-email" placeholder="email@esempio.it">
-                </div>
-                <div class="form-group">
-                    <label>Telefono</label>
-                    <input type="tel" id="edit-user-phone" placeholder="+39 333 1234567">
-                </div>
-                <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
-                    <button type="submit" class="btn btn-primary">Salva</button>
-                    <button type="button" class="btn btn-secondary" onclick="closeEditUserModal()">Annulla</button>
-                </div>
-            </form>
-        </div>
-    </div>
 
     <!-- Login Modal -->
     <div id="login-modal" class="modal" style="display: none;">
@@ -994,6 +925,6 @@
         </div>
     </div>
 
-    <script src="app.js?v=20251125p"></script>
+    <script src="app.js?v=20251126d"></script>
 </body>
 </html>
