@@ -29,7 +29,7 @@
                 <a href="#" class="nav-item" data-page="users">👥 Utenti</a>
                 <a href="#" class="nav-item" data-page="courts">🏟️ Campi</a>
                 <a href="#" class="nav-item" data-page="matches">📹 Videos</a>
-                <a href="#" class="nav-item" data-page="club-images">🖼️ Immagini Club</a>
+                <a href="#" class="nav-item" data-page="club-images">🏢 InfoClub</a>
                 <a href="#" class="nav-item" data-page="overview">📊 Stato</a>
                 <a href="#" class="nav-item" data-page="settings">⚙️ Impostazioni</a>
             </nav>
@@ -363,9 +363,46 @@
 
                 <!-- Club Images Page -->
                 <div id="page-club-images" class="page">
+                    <!-- Info Club Section -->
+                    <div class="section" style="margin-bottom: 2rem;">
+                        <h3 style="margin-bottom: 1rem;">Informazioni Club</h3>
+                        <p style="color: #a0a0a0; margin-bottom: 1.5rem;">
+                            Queste informazioni vengono mostrate nell'app quando l'utente clicca su "Info Club".
+                        </p>
+                        <form id="club-info-form" onsubmit="saveClubInfo(event)">
+                            <div class="form-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem;">
+                                <div class="form-group">
+                                    <label for="club-name">Nome Club</label>
+                                    <input type="text" id="club-name" placeholder="es. Sporty Club" class="form-input">
+                                </div>
+                                <div class="form-group">
+                                    <label for="club-address">Indirizzo</label>
+                                    <input type="text" id="club-address" placeholder="es. Via Roma 123, Milano" class="form-input">
+                                </div>
+                                <div class="form-group">
+                                    <label for="club-phone">Telefono</label>
+                                    <input type="tel" id="club-phone" placeholder="es. +39 02 1234567" class="form-input">
+                                </div>
+                                <div class="form-group">
+                                    <label for="club-email">Email</label>
+                                    <input type="email" id="club-email" placeholder="es. info@sportyclub.it" class="form-input">
+                                </div>
+                                <div class="form-group">
+                                    <label for="club-website">Sito Web</label>
+                                    <input type="url" id="club-website" placeholder="es. https://www.sportyclub.it" class="form-input">
+                                </div>
+                            </div>
+                            <div style="margin-top: 1.5rem;">
+                                <button type="submit" class="btn btn-primary">Salva Informazioni</button>
+                            </div>
+                        </form>
+                        <div id="club-info-status" style="margin-top: 1rem; display: none;"></div>
+                    </div>
+
+                    <!-- Club Images Section -->
                     <div class="section">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
-                            <h3 style="margin-bottom: 0;">Gestione Immagini Club</h3>
+                            <h3 style="margin-bottom: 0;">Immagini Club</h3>
                             <div style="display: flex; gap: 0.5rem;">
                                 <button class="btn btn-secondary" onclick="loadClubImages()">Aggiorna</button>
                                 <label class="btn btn-primary" style="cursor: pointer;">

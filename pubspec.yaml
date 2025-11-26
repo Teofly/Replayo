@@ -83,6 +83,10 @@ dependencies:
   shared_preferences: ^2.3.3
   uuid: ^4.5.1
 
+  # Social Login
+  google_sign_in: ^6.2.1
+  sign_in_with_apple: ^6.1.1
+
   # UI Components
   google_fonts: ^6.2.1
   flutter_staggered_grid_view: ^0.7.0

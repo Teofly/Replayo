@@ -53,6 +53,7 @@ function basicAuth(req, res, next) {
     '/bookings/availability',  // Public: slot disponibili per prenotazione
     '/courts',                 // Public: lista campi
     '/club/images',            // Public: immagini club
+    '/club/info',              // Public: informazioni club
     '/auth/register',          // Public: registrazione utenti
     '/auth/login',             // Public: login utenti
     '/auth/verify-email',      // Public: verifica email
@@ -1480,6 +1481,99 @@ const imageUpload = multer({
     }
   }
 });
+
+// ==================== CLUB INFO ENDPOINTS ====================
+
+// GET /api/club/info - Ottieni informazioni club (pubblico)
+app.get('/api/club/info', async (req, res) => {
+  try {
+    // Prova a creare la tabella se non esiste
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS club_info (
+        id INTEGER PRIMARY KEY DEFAULT 1,
+        name VARCHAR(255),
+        address VARCHAR(500),
+        phone VARCHAR(50),
+        email VARCHAR(255),
+        website VARCHAR(500),
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    const result = await pool.query('SELECT * FROM club_info WHERE id = 1');
+    if (result.rows.length > 0) {
+      res.json({ success: true, info: result.rows[0] });
+    } else {
+      // Ritorna info di default se non esistono
+      res.json({
+        success: true,
+        info: {
+          name: 'Sporty Club',
+          address: '',
+          phone: '',
+          email: '',
+          website: ''
+        }
+      });
+    }
+  } catch (error) {
+    console.error('Error getting club info:', error);
+    // In caso di errore, ritorna comunque info di default
+    res.json({
+      success: true,
+      info: {
+        name: 'Sporty Club',
+        address: '',
+        phone: '',
+        email: '',
+        website: ''
+      }
+    });
+  }
+});
+
+// PUT/POST /api/club/info - Aggiorna informazioni club (admin only - richiede basic auth)
+const updateClubInfo = async (req, res) => {
+  try {
+    const { name, address, phone, email, website } = req.body;
+
+    // Crea la tabella se non esiste
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS club_info (
+        id INTEGER PRIMARY KEY DEFAULT 1,
+        name VARCHAR(255),
+        address VARCHAR(500),
+        phone VARCHAR(50),
+        email VARCHAR(255),
+        website VARCHAR(500),
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Upsert: inserisce o aggiorna
+    const result = await pool.query(`
+      INSERT INTO club_info (id, name, address, phone, email, website, updated_at)
+      VALUES (1, $1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+      ON CONFLICT (id) DO UPDATE SET
+        name = EXCLUDED.name,
+        address = EXCLUDED.address,
+        phone = EXCLUDED.phone,
+        email = EXCLUDED.email,
+        website = EXCLUDED.website,
+        updated_at = CURRENT_TIMESTAMP
+      RETURNING *
+    `, [name || '', address || '', phone || '', email || '', website || '']);
+
+    res.json({ success: true, info: result.rows[0] });
+  } catch (error) {
+    console.error('Error updating club info:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+app.put('/api/club/info', updateClubInfo);
+app.post('/api/club/info', updateClubInfo);
+
+// ==================== CLUB IMAGES ENDPOINTS ====================
 
 // GET /api/club/images - Lista immagini club (pubblico)
 app.get('/api/club/images', async (req, res) => {

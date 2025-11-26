@@ -161,7 +161,8 @@ function navigateTo(page) {
         'videos': 'Videos',
         'users': 'Users',
         'storage': 'Storage',
-        'test': 'Test'
+        'test': 'Test',
+        'club-images': 'InfoClub'
     };
     document.getElementById('page-title').textContent = pageTitles[page] || page;
 
@@ -182,6 +183,9 @@ function navigateTo(page) {
         loadCourts().then(() => renderCourtsList());
     } else if (page === 'players') {
         loadPlayers();
+    } else if (page === 'club-images') {
+        loadClubInfo();
+        loadClubImages();
     }
 }
 
@@ -3511,6 +3515,66 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+
+// ==================== CLUB INFO MANAGEMENT ====================
+
+async function loadClubInfo() {
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/club/info`);
+        const data = await response.json();
+
+        if (data.success && data.info) {
+            document.getElementById('club-name').value = data.info.name || '';
+            document.getElementById('club-address').value = data.info.address || '';
+            document.getElementById('club-phone').value = data.info.phone || '';
+            document.getElementById('club-email').value = data.info.email || '';
+            document.getElementById('club-website').value = data.info.website || '';
+        }
+    } catch (e) {
+        console.log('Club info not found, using defaults');
+    }
+}
+
+async function saveClubInfo(event) {
+    event.preventDefault();
+
+    const statusEl = document.getElementById('club-info-status');
+    statusEl.style.display = 'block';
+    statusEl.className = 'info-box';
+    statusEl.innerHTML = '<p>Salvataggio in corso...</p>';
+
+    const info = {
+        name: document.getElementById('club-name').value,
+        address: document.getElementById('club-address').value,
+        phone: document.getElementById('club-phone').value,
+        email: document.getElementById('club-email').value,
+        website: document.getElementById('club-website').value
+    };
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/club/info`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(info)
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            statusEl.style.background = 'rgba(76, 175, 80, 0.2)';
+            statusEl.innerHTML = '<p style="color: #4caf50;">✓ Informazioni salvate con successo!</p>';
+        } else {
+            throw new Error(data.error || 'Errore nel salvataggio');
+        }
+    } catch (e) {
+        statusEl.style.background = 'rgba(244, 67, 54, 0.2)';
+        statusEl.innerHTML = `<p style="color: #f44336;">✗ ${e.message}</p>`;
+    }
+
+    setTimeout(() => {
+        statusEl.style.display = 'none';
+    }, 3000);
+}
 
 // ==================== CLUB IMAGES MANAGEMENT ====================
 

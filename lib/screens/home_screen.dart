@@ -8,7 +8,10 @@ import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import '../config/app_theme.dart';
 import '../services/user_auth_service.dart';
+import 'booking_screen.dart';
+import 'login_screen.dart';
 import 'match_access_screen.dart';
+import 'my_bookings_screen.dart';
 import 'my_videos_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -106,37 +109,59 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       Row(
                         children: [
-                          // Login/User button (small, top right)
-                          _buildUserButtonSmall(context),
-                          const SizedBox(width: 12),
-                          InkWell(
-                            onTap: () async {
-                              final Uri url = Uri.parse('https://administrator.teofly.it');
-                              await launchUrl(url);
-                            },
-                            borderRadius: BorderRadius.circular(15),
-                            child: Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: AppTheme.darkCard,
-                                borderRadius: BorderRadius.circular(15),
-                                border: Border.all(
-                                  color: AppTheme.neonBlue.withOpacity(0.3),
+                          // Admin settings button (only for logged-in admins)
+                          if (_isLoggedIn && _authService.isAdmin)
+                            InkWell(
+                              onTap: () async {
+                                final Uri url = Uri.parse('https://administrator.teofly.it');
+                                await launchUrl(url);
+                              },
+                              borderRadius: BorderRadius.circular(15),
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.darkCard,
+                                  borderRadius: BorderRadius.circular(15),
+                                  border: Border.all(
+                                    color: AppTheme.neonBlue.withOpacity(0.3),
+                                  ),
+                                  boxShadow: AppTheme.neonGlow(AppTheme.neonBlue),
                                 ),
-                                boxShadow: AppTheme.neonGlow(AppTheme.neonBlue),
-                              ),
-                              child: Icon(
-                                Icons.settings,
-                                color: AppTheme.neonBlue,
+                                child: Icon(
+                                  Icons.settings,
+                                  color: AppTheme.neonBlue,
+                                ),
                               ),
                             ),
-                          ),
+                          if (_isLoggedIn && _authService.isAdmin)
+                            const SizedBox(width: 12),
+                          // Login/User button (top right)
+                          _buildUserButtonSmall(context),
                         ],
                       ),
                     ],
                   ).animate().fadeIn(duration: 600.ms),
 
                   const SizedBox(height: 40),
+
+                  // Le Mie Prenotazioni - visibile solo se loggato (PRIMO)
+                  if (_isLoggedIn) ...[
+                    _buildActionCard(
+                      context,
+                      icon: Icons.event_note,
+                      title: 'Le Mie Prenotazioni',
+                      subtitle: 'Visualizza le tue prenotazioni e video',
+                      gradient: [AppTheme.neonPurple, AppTheme.neonGreen],
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (context) => const MyBookingsScreen()),
+                      ),
+                    ).animate().slideX(
+                          begin: -0.3,
+                          duration: 600.ms,
+                          curve: Curves.easeOutBack,
+                        ),
+                    const SizedBox(height: 20),
+                  ],
 
                   // Main action cards
                   _buildActionCard(
@@ -147,7 +172,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     gradient: [AppTheme.neonBlue, AppTheme.neonPurple],
                     onTap: () => _navigateToMatchAccess(context, true),
                   ).animate().slideX(
-                        begin: -0.3,
+                        begin: _isLoggedIn ? 0.3 : -0.3,
+                        delay: _isLoggedIn ? 100.ms : 0.ms,
                         duration: 600.ms,
                         curve: Curves.easeOutBack,
                       ),
@@ -162,8 +188,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     gradient: [AppTheme.neonPurple, AppTheme.neonPink],
                     onTap: () => _navigateToMatchAccess(context, false),
                   ).animate().slideX(
-                        begin: 0.3,
-                        delay: 200.ms,
+                        begin: -0.3,
+                        delay: _isLoggedIn ? 200.ms : 200.ms,
                         duration: 600.ms,
                         curve: Curves.easeOutBack,
                       ),
@@ -178,8 +204,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     gradient: [AppTheme.neonGreen, AppTheme.neonBlue],
                     onTap: () => _openBookingPage(context),
                   ).animate().slideX(
-                        begin: -0.3,
-                        delay: 300.ms,
+                        begin: _isLoggedIn ? 0.3 : -0.3,
+                        delay: _isLoggedIn ? 350.ms : 300.ms,
                         duration: 600.ms,
                         curve: Curves.easeOutBack,
                       ),
@@ -471,7 +497,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
       return PopupMenuButton<String>(
         onSelected: (value) {
-          if (value == 'videos') {
+          if (value == 'bookings') {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const MyBookingsScreen()),
+            );
+          } else if (value == 'videos') {
             Navigator.push(
               context,
               MaterialPageRoute(builder: (context) => const MyVideosScreen()),
@@ -520,23 +551,12 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         itemBuilder: (context) => [
           PopupMenuItem<String>(
-            value: 'videos',
-            child: Row(
-              children: [
-                Icon(Icons.video_library, color: AppTheme.neonBlue, size: 18),
-                const SizedBox(width: 10),
-                Text('I Miei Video', style: GoogleFonts.rajdhani(fontSize: 14, color: Colors.white)),
-              ],
-            ),
-          ),
-          const PopupMenuDivider(),
-          PopupMenuItem<String>(
             value: 'logout',
             child: Row(
               children: [
                 const Icon(Icons.logout, color: Colors.redAccent, size: 18),
                 const SizedBox(width: 10),
-                Text('Esci', style: GoogleFonts.rajdhani(fontSize: 14, color: Colors.redAccent)),
+                Text('Esci', style: GoogleFonts.rajdhani(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.redAccent)),
               ],
             ),
           ),
@@ -725,16 +745,25 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openLoginPage(BuildContext context) async {
-    final Uri url = Uri.parse('https://api.teofly.it/login.html');
-    try {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Impossibile aprire la pagina di login')),
-        );
-      }
-    }
+    await Navigator.of(context).push(
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            const LoginScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0.0, 1.0),
+              end: Offset.zero,
+            ).animate(CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
+            )),
+            child: child,
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 400),
+      ),
+    );
   }
 
   Future<void> _openAdminDashboard(BuildContext context) async {
@@ -751,16 +780,25 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openBookingPage(BuildContext context) async {
-    final Uri url = Uri.parse('https://booking.teofly.it');
-    try {
-      await launchUrl(url, mode: LaunchMode.platformDefault);
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Impossibile aprire la pagina di prenotazione')),
-        );
-      }
-    }
+    await Navigator.of(context).push(
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            const BookingScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(1.0, 0.0),
+              end: Offset.zero,
+            ).animate(CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
+            )),
+            child: child,
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 400),
+      ),
+    );
   }
 
   void _navigateToMatchAccess(BuildContext context, bool useQR) {
@@ -892,10 +930,45 @@ class _ClubGalleryScreenState extends State<ClubGalleryScreen> {
   bool _isLoading = true;
   bool _useNetworkImages = true;
 
+  // Club info
+  Map<String, dynamic>? _clubInfo;
+
   @override
   void initState() {
     super.initState();
+    _loadClubInfo();
     _loadImages();
+  }
+
+  Future<void> _loadClubInfo() async {
+    try {
+      final response = await http.get(
+        Uri.parse('https://api.teofly.it/api/club/info'),
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true && data['info'] != null) {
+          setState(() {
+            _clubInfo = data['info'];
+          });
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading club info: $e');
+    }
+
+    // Fallback default info
+    setState(() {
+      _clubInfo = {
+        'name': 'Sporty',
+        'address': 'Via Roma 123, Milano',
+        'phone': '+39 02 1234567',
+        'email': 'info@sportyclub.it',
+        'website': 'https://www.sportyclub.it',
+      };
+    });
   }
 
   Future<void> _loadImages() async {
@@ -957,61 +1030,71 @@ class _ClubGalleryScreenState extends State<ClubGalleryScreen> {
           ? const Center(
               child: CircularProgressIndicator(color: AppTheme.neonGreen),
             )
-          : _photos.isEmpty
-              ? Center(
-                  child: Text(
-                    'Nessuna immagine disponibile',
-                    style: GoogleFonts.rajdhani(
-                      color: Colors.white70,
-                      fontSize: 16,
+          : CustomScrollView(
+              slivers: [
+                // Club Info Section
+                SliverToBoxAdapter(
+                  child: _buildClubInfoSection(),
+                ),
+                // Gallery Section
+                if (_photos.isEmpty)
+                  SliverFillRemaining(
+                    child: Center(
+                      child: Text(
+                        'Nessuna immagine disponibile',
+                        style: GoogleFonts.rajdhani(
+                          color: Colors.white70,
+                          fontSize: 16,
+                        ),
+                      ),
                     ),
-                  ),
-                )
-              : Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: GridView.builder(
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                      childAspectRatio: 1,
-                    ),
-                    itemCount: _photos.length,
-                    itemBuilder: (context, index) {
-                      return GestureDetector(
-                        onTap: () => _showFullScreenImage(context, _photos, index),
-                        child: Hero(
-                          tag: 'photo_$index',
-                          child: Container(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(15),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppTheme.neonGreen.withOpacity(0.2),
-                                  blurRadius: 10,
-                                  spreadRadius: 1,
+                  )
+                else
+                  SliverPadding(
+                    padding: const EdgeInsets.all(16.0),
+                    sliver: SliverGrid(
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        crossAxisSpacing: 12,
+                        mainAxisSpacing: 12,
+                        childAspectRatio: 1,
+                      ),
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          return GestureDetector(
+                            onTap: () => _showFullScreenImage(context, _photos, index),
+                            child: Hero(
+                              tag: 'photo_$index',
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(15),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: AppTheme.neonGreen.withOpacity(0.2),
+                                      blurRadius: 10,
+                                      spreadRadius: 1,
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(15),
-                              child: _useNetworkImages
-                                  ? Image.network(
-                                      _photos[index],
-                                      fit: BoxFit.cover,
-                                      loadingBuilder: (context, child, loadingProgress) {
-                                        if (loadingProgress == null) return child;
-                                        return Container(
-                                          color: AppTheme.darkCard,
-                                          child: const Center(
-                                            child: CircularProgressIndicator(
-                                              color: AppTheme.neonGreen,
-                                              strokeWidth: 2,
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                      errorBuilder: (context, error, stackTrace) {
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(15),
+                                  child: _useNetworkImages
+                                      ? Image.network(
+                                          _photos[index],
+                                          fit: BoxFit.cover,
+                                          loadingBuilder: (context, child, loadingProgress) {
+                                            if (loadingProgress == null) return child;
+                                            return Container(
+                                              color: AppTheme.darkCard,
+                                              child: const Center(
+                                                child: CircularProgressIndicator(
+                                                  color: AppTheme.neonGreen,
+                                                  strokeWidth: 2,
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                          errorBuilder: (context, error, stackTrace) {
                                         return Container(
                                           color: AppTheme.darkCard,
                                           child: const Icon(
@@ -1030,10 +1113,180 @@ class _ClubGalleryScreenState extends State<ClubGalleryScreen> {
                           ),
                         ),
                       );
-                    },
+                        },
+                        childCount: _photos.length,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildClubInfoSection() {
+    if (_clubInfo == null) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      margin: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.all(20.0),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppTheme.darkCard,
+            AppTheme.darkCard.withOpacity(0.8),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: AppTheme.neonGreen.withOpacity(0.3),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.neonGreen.withOpacity(0.1),
+            blurRadius: 20,
+            spreadRadius: 2,
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Club Name
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppTheme.neonGreen.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.sports_tennis,
+                  color: AppTheme.neonGreen,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _clubInfo!['name'] ?? 'Club',
+                  style: GoogleFonts.orbitron(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
                   ),
                 ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // Address
+          if (_clubInfo!['address'] != null && _clubInfo!['address'].toString().isNotEmpty)
+            _buildInfoRow(
+              icon: Icons.location_on,
+              text: _clubInfo!['address'] ?? '',
+              onTap: () => _openInGoogleMaps(_clubInfo!['address']),
+              isClickable: true,
+            ),
+
+          // Phone
+          if (_clubInfo!['phone'] != null && _clubInfo!['phone'].toString().isNotEmpty)
+            _buildInfoRow(
+              icon: Icons.phone,
+              text: _clubInfo!['phone'],
+              onTap: () => _launchUrl('tel:${_clubInfo!['phone']}'),
+              isClickable: true,
+            ),
+
+          // Email
+          if (_clubInfo!['email'] != null && _clubInfo!['email'].toString().isNotEmpty)
+            _buildInfoRow(
+              icon: Icons.email,
+              text: _clubInfo!['email'],
+              onTap: () => _launchUrl('mailto:${_clubInfo!['email']}'),
+              isClickable: true,
+            ),
+
+          // Website
+          if (_clubInfo!['website'] != null && _clubInfo!['website'].toString().isNotEmpty)
+            _buildInfoRow(
+              icon: Icons.language,
+              text: _clubInfo!['website'].toString().replaceAll('https://', '').replaceAll('http://', ''),
+              onTap: () => _launchUrl(_clubInfo!['website']),
+              isClickable: true,
+            ),
+        ],
+      ),
     );
+  }
+
+  Widget _buildInfoRow({
+    required IconData icon,
+    required String text,
+    VoidCallback? onTap,
+    bool isClickable = false,
+  }) {
+    final content = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            color: isClickable ? AppTheme.neonGreen : Colors.white54,
+            size: 20,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              text,
+              style: GoogleFonts.rajdhani(
+                fontSize: 16,
+                color: isClickable ? AppTheme.neonGreen : Colors.white70,
+                decoration: isClickable ? TextDecoration.underline : null,
+                decorationColor: AppTheme.neonGreen,
+              ),
+            ),
+          ),
+          if (isClickable)
+            Icon(
+              Icons.arrow_forward_ios,
+              color: AppTheme.neonGreen.withOpacity(0.5),
+              size: 14,
+            ),
+        ],
+      ),
+    );
+
+    if (onTap != null) {
+      return InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: content,
+      );
+    }
+    return content;
+  }
+
+  Future<void> _launchUrl(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  Future<void> _openInGoogleMaps(String address) async {
+    final encodedAddress = Uri.encodeComponent(address);
+    final googleMapsUrl = 'https://www.google.com/maps/search/?api=1&query=$encodedAddress';
+    final uri = Uri.parse(googleMapsUrl);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 
   void _showFullScreenImage(BuildContext context, List<String> photos, int initialIndex) {
