@@ -74,6 +74,75 @@ async function downloadVideoForBooking(bookingId) {
   }
 }
 
+async function autoConfirmPendingBookings(dateStr, twoHoursLater) {
+  log('--- AUTO-CONFERMA PRENOTAZIONI PENDING ---');
+
+  try {
+    // Query per trovare prenotazioni pending dall'inizio giornata fino a ora+2h
+    const query = `
+      SELECT
+        b.id,
+        b.customer_name,
+        b.start_time,
+        b.end_time,
+        c.name as court_name
+      FROM bookings b
+      JOIN courts c ON b.court_id = c.id
+      WHERE b.booking_date = $1
+        AND b.status = 'pending'
+        AND b.start_time >= '00:00:00'
+        AND b.start_time <= $2
+      ORDER BY b.start_time ASC
+    `;
+
+    const result = await pool.query(query, [dateStr, twoHoursLater]);
+
+    if (result.rows.length === 0) {
+      log('Nessuna prenotazione pending da auto-confermare');
+      return;
+    }
+
+    log(`Trovate ${result.rows.length} prenotazioni pending da auto-confermare:`);
+
+    let confirmedCount = 0;
+    let errorCount = 0;
+
+    for (const booking of result.rows) {
+      log(`  Confermo: ${booking.court_name} ${booking.start_time}-${booking.end_time} (${booking.customer_name})`);
+
+      try {
+        const response = await axios.put(
+          `${API_BASE_URL}/bookings/${booking.id}/confirm`,
+          {},
+          {
+            headers: {
+              'Authorization': `Basic ${AUTH}`,
+              'Content-Type': 'application/json'
+            },
+            timeout: 10000
+          }
+        );
+
+        if (response.data) {
+          confirmedCount++;
+          log(`    ✓ Confermata con successo`);
+        }
+      } catch (error) {
+        errorCount++;
+        logError(`    ✗ Errore conferma: ${error.message}`);
+      }
+
+      // Piccola pausa tra le conferme
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    log(`Auto-conferma completata: ${confirmedCount} successi, ${errorCount} errori`);
+
+  } catch (error) {
+    logError('Errore durante auto-conferma prenotazioni', error);
+  }
+}
+
 async function main() {
   log('=== INIZIO CRON JOB VIDEO DOWNLOAD ===');
 
@@ -84,11 +153,23 @@ async function main() {
 
   // Calcola anche l'ora corrente italiana per capire quali prenotazioni sono già passate
   const currentHour = italianTime.getHours();
+  const currentMinute = italianTime.getMinutes();
 
-  log(`Data: ${dateStr}, Ora corrente italiana: ${currentHour}:55 (UTC: ${today.getUTCHours()}:55)`);
+  log(`Data: ${dateStr}, Ora corrente italiana: ${currentHour}:${currentMinute} (UTC: ${today.getUTCHours()}:${today.getUTCMinutes()})`);
+
+  // Calcola ora+2h in formato HH:MM per auto-conferma
+  const twoHoursLaterDate = new Date(italianTime.getTime() + 2 * 60 * 60 * 1000);
+  const twoHoursLater = `${String(twoHoursLaterDate.getHours()).padStart(2, '0')}:${String(twoHoursLaterDate.getMinutes()).padStart(2, '0')}`;
+
+  log(`Finestra auto-conferma: 00:00 → ${twoHoursLater}`);
 
   try {
-    // Recupera prenotazioni del giorno che necessitano video
+    // STEP 1: Auto-conferma prenotazioni pending dall'inizio giornata fino a ora+2h
+    await autoConfirmPendingBookings(dateStr, twoHoursLater);
+
+    log('\n--- DOWNLOAD VIDEO ---');
+
+    // STEP 2: Recupera prenotazioni del giorno che necessitano video
     const bookings = await getBookingsForVideoDownload(dateStr);
 
     if (bookings.length === 0) {

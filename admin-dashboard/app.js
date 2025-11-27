@@ -1010,6 +1010,20 @@ async function showBookingDetails(bookingId) {
             'cancelled': 'Cancellata'
         };
 
+        // Check for videos if match_id exists
+        let videoCount = 0;
+        let matchTitle = '';
+        if (booking.match_id) {
+            try {
+                const videoResponse = await apiFetch(`${API_BASE_URL}/videos/match/${booking.match_id}`);
+                const videos = await videoResponse.json();
+                videoCount = videos ? videos.length : 0;
+                matchTitle = `${courtName} - ${formattedDate}`;
+            } catch (videoError) {
+                console.error('Error loading videos:', videoError);
+            }
+        }
+
         contentEl.innerHTML = `
             <div class="booking-details-grid">
                 <div class="booking-detail-item">
@@ -1050,6 +1064,14 @@ async function showBookingDetails(bookingId) {
                     <span class="detail-label">Prezzo Totale</span>
                     <span class="detail-value">${booking.total_price ? booking.total_price + ' EUR' : '-'}</span>
                 </div>
+                ${videoCount > 0 ? `
+                <div class="booking-detail-item">
+                    <span class="detail-label">Video Disponibili</span>
+                    <span class="detail-value" style="color: var(--success); font-weight: 700;">
+                        ${videoCount} video
+                    </span>
+                </div>
+                ` : ''}
                 ${booking.notes ? `
                 <div class="booking-detail-item" style="grid-column: 1 / -1;">
                     <span class="detail-label">Note</span>
@@ -1065,6 +1087,22 @@ async function showBookingDetails(bookingId) {
         // Show send email button for confirmed bookings
         const sendEmailBtn = document.getElementById('send-email-btn');
         sendEmailBtn.style.display = booking.status === 'confirmed' ? 'inline-block' : 'none';
+
+        // Show/hide video button based on availability
+        const viewVideosBtn = document.getElementById('view-videos-btn');
+        if (viewVideosBtn) {
+            if (videoCount > 0) {
+                viewVideosBtn.style.display = 'inline-block';
+                viewVideosBtn.onclick = () => {
+                    // Close booking details modal first
+                    modal.style.display = 'none';
+                    // Then show video modal
+                    showMatchVideos(booking.match_id, matchTitle);
+                };
+            } else {
+                viewVideosBtn.style.display = 'none';
+            }
+        }
 
     } catch (error) {
         console.error('Error loading booking details:', error);
