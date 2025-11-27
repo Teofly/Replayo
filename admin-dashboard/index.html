@@ -179,7 +179,7 @@
                             <div style="display: flex; gap: 1rem; margin-top: 1.5rem; flex-wrap: wrap;">
                                 <button type="submit" class="btn btn-primary">Salva Impostazioni</button>
                                 <button type="button" class="btn btn-secondary" onclick="testSmtpConnection()">Test Connessione</button>
-                                <button type="button" class="btn btn-secondary" onclick="sendTestEmail()">Invia Email di Test</button>
+                                <button type="button" class="btn btn-secondary" onclick="openTestEmailModal()">Invia Email di Test</button>
                             </div>
                         </form>
                         <div id="smtp-status" class="info-box" style="margin-top: 1rem; display: none;"></div>
@@ -283,6 +283,13 @@
                                 <button class="sport-filter-btn" data-sport="padel" onclick="filterStatsBySport('padel')">Padel</button>
                                 <button class="sport-filter-btn" data-sport="tennis" onclick="filterStatsBySport('tennis')">Tennis</button>
                                 <button class="sport-filter-btn" data-sport="calcetto" onclick="filterStatsBySport('calcetto')">Calcetto</button>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <button class="btn btn-secondary" onclick="openStatsPlayerFilterModal()" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">
+                                    <span id="stats-player-filter-icon">👤</span> Filtra Giocatore
+                                </button>
+                                <span id="stats-player-filter-label" style="display: none; color: var(--accent-primary); font-size: 0.85rem;"></span>
+                                <button id="stats-player-filter-clear" class="btn btn-secondary" onclick="clearStatsPlayerFilter()" style="display: none; padding: 0.2rem 0.5rem; font-size: 0.75rem;">✕</button>
                             </div>
                         </div>
                         <!-- Summary Cards -->
@@ -948,6 +955,40 @@
         </div>
     </div>
 
+    <!-- Test Email Modal -->
+    <div id="test-email-modal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 400px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="margin: 0;">Invia Email di Test</h3>
+                <button type="button" class="btn btn-secondary" onclick="closeTestEmailModal()" style="padding: 0.25rem 0.75rem;">&times;</button>
+            </div>
+            <div class="form-group">
+                <label for="test-email-input">Indirizzo Email</label>
+                <input type="email" id="test-email-input" placeholder="email@esempio.com" class="form-input">
+            </div>
+            <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                <button type="button" class="btn btn-primary" onclick="confirmSendTestEmail()" style="flex: 1;">Invia</button>
+                <button type="button" class="btn btn-secondary" onclick="closeTestEmailModal()">Annulla</button>
+            </div>
+            <div id="test-email-modal-status" style="margin-top: 1rem;"></div>
+        </div>
+    </div>
+
+    <!-- Confirm Dialog Modal -->
+    <div id="confirm-dialog-modal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 400px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 id="confirm-dialog-title" style="margin: 0;">Conferma</h3>
+                <button type="button" class="btn btn-secondary" onclick="closeConfirmDialog()" style="padding: 0.25rem 0.75rem;">&times;</button>
+            </div>
+            <p id="confirm-dialog-message" style="color: var(--text-secondary); margin-bottom: 1.5rem;"></p>
+            <div style="display: flex; gap: 1rem;">
+                <button type="button" id="confirm-dialog-yes" class="btn btn-danger" style="flex: 1;">Elimina</button>
+                <button type="button" class="btn btn-secondary" onclick="closeConfirmDialog()">Annulla</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Filter Player Modal -->
     <div id="filter-player-modal" class="modal" style="display: none;">
         <div class="modal-content" style="max-width: 450px; overflow: visible; min-height: 350px;">
@@ -964,6 +1005,26 @@
                        onkeydown="onFilterPlayerSearchKeydown(event)"
                        style="width: 100%; padding: 0.75rem 1rem; border-radius: 8px; background: var(--bg-dark); color: var(--text-primary); border: 1px solid var(--border-color); font-size: 1rem; box-sizing: border-box;">
                 <div id="filter-player-suggestions" class="player-suggestions-dropdown" style="display: none; max-height: 250px; overflow-y: auto;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats Player Filter Modal -->
+    <div id="stats-player-filter-modal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 450px; overflow: visible; min-height: 350px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="margin: 0;">Filtra Giocatore (Statistiche)</h3>
+                <button type="button" class="btn btn-secondary" onclick="closeStatsPlayerFilterModal()" style="padding: 0.25rem 0.75rem;">&times;</button>
+            </div>
+            <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.9rem;">Cerca un giocatore per visualizzare le sue statistiche personali</p>
+            <div style="position: relative;">
+                <input type="text" id="stats-player-filter-input"
+                       placeholder="Digita nome giocatore..."
+                       autocomplete="off"
+                       oninput="onStatsPlayerFilterInput()"
+                       onkeydown="onStatsPlayerFilterKeydown(event)"
+                       style="width: 100%; padding: 0.75rem 1rem; border-radius: 8px; background: var(--bg-dark); color: var(--text-primary); border: 1px solid var(--border-color); font-size: 1rem; box-sizing: border-box;">
+                <div id="stats-player-filter-suggestions" class="player-suggestions-dropdown" style="display: none; max-height: 250px; overflow-y: auto;"></div>
             </div>
         </div>
     </div>

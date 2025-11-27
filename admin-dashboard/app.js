@@ -1063,7 +1063,19 @@ async function confirmBooking() {
     }
 }
 
-async function deleteBooking() {
+function deleteBooking() {
+    if (!currentBookingDetails) return;
+
+    const customerName = currentBookingDetails.customer_name || 'questa prenotazione';
+    showConfirmDialog(
+        'Cancella Prenotazione',
+        `Sei sicuro di voler cancellare la prenotazione di "${customerName}"?`,
+        'Cancella',
+        executeDeleteBooking
+    );
+}
+
+async function executeDeleteBooking() {
     if (!currentBookingDetails) return;
 
     try {
@@ -1075,12 +1087,13 @@ async function deleteBooking() {
             document.getElementById('booking-details-modal').style.display = 'none';
             if (selectedDate) renderDailyTimeline(selectedDate);
             renderCalendar();
+            showNotification('Prenotazione cancellata', 'success');
         } else {
             const data = await response.json();
             throw new Error(data.error || 'Errore eliminazione');
         }
     } catch (error) {
-        alert('Errore: ' + error.message);
+        showNotification('Errore: ' + error.message, 'error');
     }
 }
 
@@ -3208,6 +3221,10 @@ function goToBookingDate(dateStr, bookingId) {
 let chartSport, chartWeek, chartMonth, chartYear;
 let statsPeriodFilter = 'month';
 let statsSportFilter = null;
+let statsPlayerFilter = null; // { id, name } or null
+let statsPlayerSuggestions = [];
+let statsPlayerSuggestionIndex = -1;
+let statsPlayerSearchTimeout = null;
 
 function getStatsDateRange() {
     const now = new Date();
@@ -3304,6 +3321,152 @@ function onStatsFilterChange() {
     loadBookingStats();
 }
 
+// ==================== STATS PLAYER FILTER ====================
+function openStatsPlayerFilterModal() {
+    const modal = document.getElementById('stats-player-filter-modal');
+    modal.style.display = 'flex';
+    document.getElementById('stats-player-filter-input').value = '';
+    document.getElementById('stats-player-filter-suggestions').style.display = 'none';
+    statsPlayerSuggestions = [];
+    statsPlayerSuggestionIndex = -1;
+    setTimeout(() => {
+        document.getElementById('stats-player-filter-input').focus();
+    }, 100);
+}
+
+function closeStatsPlayerFilterModal() {
+    document.getElementById('stats-player-filter-modal').style.display = 'none';
+}
+
+function onStatsPlayerFilterInput() {
+    const input = document.getElementById('stats-player-filter-input');
+    const query = input.value.trim();
+
+    clearTimeout(statsPlayerSearchTimeout);
+
+    if (query.length < 2) {
+        document.getElementById('stats-player-filter-suggestions').style.display = 'none';
+        statsPlayerSuggestions = [];
+        statsPlayerSuggestionIndex = -1;
+        return;
+    }
+
+    statsPlayerSearchTimeout = setTimeout(async () => {
+        await searchPlayersForStats(query);
+    }, 200);
+}
+
+async function searchPlayersForStats(query) {
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/admin/unified-users?search=${encodeURIComponent(query)}&limit=10`);
+        const data = await response.json();
+
+        if (data.success && data.users && data.users.length > 0) {
+            statsPlayerSuggestions = data.users;
+            statsPlayerSuggestionIndex = -1;
+            renderStatsPlayerSuggestions();
+        } else {
+            statsPlayerSuggestions = [];
+            document.getElementById('stats-player-filter-suggestions').style.display = 'none';
+        }
+    } catch (error) {
+        console.error('Error searching players for stats:', error);
+    }
+}
+
+function renderStatsPlayerSuggestions() {
+    const dropdown = document.getElementById('stats-player-filter-suggestions');
+
+    dropdown.innerHTML = statsPlayerSuggestions.map((user, index) => {
+        const name = user.fullName || `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'N/A';
+        const details = [user.email, user.phone].filter(Boolean).join(' - ') || '';
+        const isSelected = index === statsPlayerSuggestionIndex;
+
+        return `<div class="player-suggestion-item ${isSelected ? 'selected' : ''}"
+                     data-index="${index}"
+                     onclick="selectStatsPlayerFilter(${index})">
+            <div class="suggestion-name">${name}</div>
+            ${details ? `<div class="suggestion-details">${details}</div>` : ''}
+        </div>`;
+    }).join('');
+
+    dropdown.style.display = 'block';
+}
+
+function onStatsPlayerFilterKeydown(event) {
+    const dropdown = document.getElementById('stats-player-filter-suggestions');
+
+    if (dropdown.style.display === 'none' && event.key !== 'Escape') return;
+
+    switch (event.key) {
+        case 'ArrowDown':
+            event.preventDefault();
+            if (statsPlayerSuggestionIndex < statsPlayerSuggestions.length - 1) {
+                statsPlayerSuggestionIndex++;
+                renderStatsPlayerSuggestions();
+                scrollStatsPlayerSuggestionIntoView();
+            }
+            break;
+        case 'ArrowUp':
+            event.preventDefault();
+            if (statsPlayerSuggestionIndex > 0) {
+                statsPlayerSuggestionIndex--;
+                renderStatsPlayerSuggestions();
+                scrollStatsPlayerSuggestionIntoView();
+            }
+            break;
+        case 'Enter':
+            event.preventDefault();
+            if (statsPlayerSuggestionIndex >= 0 && statsPlayerSuggestions[statsPlayerSuggestionIndex]) {
+                selectStatsPlayerFilter(statsPlayerSuggestionIndex);
+            }
+            break;
+        case 'Escape':
+            closeStatsPlayerFilterModal();
+            break;
+    }
+}
+
+function scrollStatsPlayerSuggestionIntoView() {
+    const dropdown = document.getElementById('stats-player-filter-suggestions');
+    const selected = dropdown.querySelector('.player-suggestion-item.selected');
+    if (selected) {
+        selected.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+}
+
+function selectStatsPlayerFilter(index) {
+    const user = statsPlayerSuggestions[index];
+    if (!user) return;
+
+    const name = user.name || user.fullName || `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'N/A';
+
+    statsPlayerFilter = {
+        userId: user.userId || null,  // user_id dalla tabella bookings
+        name: name,
+        customerName: name  // Per matching esatto con customer_name
+    };
+
+    console.log('Stats player filter set:', statsPlayerFilter);
+
+    // Update UI
+    document.getElementById('stats-player-filter-label').textContent = name;
+    document.getElementById('stats-player-filter-label').style.display = 'inline';
+    document.getElementById('stats-player-filter-clear').style.display = 'inline';
+    document.getElementById('stats-player-filter-icon').textContent = '✓';
+
+    closeStatsPlayerFilterModal();
+    loadBookingStats();
+}
+
+function clearStatsPlayerFilter() {
+    statsPlayerFilter = null;
+    document.getElementById('stats-player-filter-label').style.display = 'none';
+    document.getElementById('stats-player-filter-clear').style.display = 'none';
+    document.getElementById('stats-player-filter-icon').textContent = '👤';
+    loadBookingStats();
+}
+
 async function loadBookingStats() {
     try {
         const { fromDate, toDate } = getStatsDateRange();
@@ -3314,6 +3477,18 @@ async function loadBookingStats() {
         if (sportFilter) {
             url += `&sport_type=${sportFilter}`;
         }
+        if (statsPlayerFilter) {
+            // Passa entrambi i parametri per catturare prenotazioni con user_id O customer_name
+            if (statsPlayerFilter.userId) {
+                url += `&user_id=${statsPlayerFilter.userId}`;
+            }
+            if (statsPlayerFilter.customerName) {
+                url += `&customer_name=${encodeURIComponent(statsPlayerFilter.customerName)}`;
+            }
+        }
+
+        console.log('[loadBookingStats] URL:', url);
+        console.log('[loadBookingStats] statsPlayerFilter:', statsPlayerFilter);
 
         const response = await apiFetch(url);
         const data = await response.json();
@@ -4916,9 +5091,16 @@ async function saveUnifiedUser(event) {
 }
 
 // Delete unified user
-async function deleteUnifiedUser(playerId, userId, name) {
-    if (!confirm(`Eliminare "${name}"?`)) return;
+function deleteUnifiedUser(playerId, userId, name) {
+    showConfirmDialog(
+        'Elimina Utente',
+        `Sei sicuro di voler eliminare "${name}"?`,
+        'Elimina',
+        () => executeDeleteUnifiedUser(playerId, userId, name)
+    );
+}
 
+async function executeDeleteUnifiedUser(playerId, userId, name) {
     try {
         // If has player_id, delete the player (soft delete)
         if (playerId) {
@@ -4930,14 +5112,13 @@ async function deleteUnifiedUser(playerId, userId, name) {
             if (data.success) {
                 loadUnifiedUsers();
                 loadUnifiedUsersStats();
+                showNotification('Utente eliminato', 'success');
                 return;
             }
         }
 
         // If only user (no player linked), delete user
         if (userId && !playerId) {
-            if (!confirm('Questo eliminerà definitivamente l\'utente registrato. Confermi?')) return;
-
             const response = await apiFetch(`${API_BASE_URL}/admin/users/${userId}`, {
                 method: 'DELETE'
             });
@@ -4946,14 +5127,14 @@ async function deleteUnifiedUser(playerId, userId, name) {
             if (data.success) {
                 loadUnifiedUsers();
                 loadUnifiedUsersStats();
-                alert('Utente eliminato');
+                showNotification('Utente eliminato', 'success');
                 return;
             }
         }
 
-        alert('Errore durante l\'eliminazione');
+        showNotification('Errore durante l\'eliminazione', 'error');
     } catch (error) {
-        alert('Errore: ' + error.message);
+        showNotification('Errore: ' + error.message, 'error');
     }
 }
 
@@ -5283,12 +5464,30 @@ async function sendTestEmails() {
     }
 }
 
-async function sendTestEmail() {
-    const email = prompt('Inserisci indirizzo email per il test:');
-    if (!email) return;
+// ==================== TEST EMAIL MODAL ====================
+function openTestEmailModal() {
+    document.getElementById('test-email-modal').style.display = 'flex';
+    document.getElementById('test-email-input').value = '';
+    document.getElementById('test-email-modal-status').innerHTML = '';
+    setTimeout(() => {
+        document.getElementById('test-email-input').focus();
+    }, 100);
+}
 
-    const statusEl = document.getElementById('smtp-status');
-    statusEl.style.display = 'block';
+function closeTestEmailModal() {
+    document.getElementById('test-email-modal').style.display = 'none';
+}
+
+async function confirmSendTestEmail() {
+    const emailInput = document.getElementById('test-email-input');
+    const statusEl = document.getElementById('test-email-modal-status');
+    const email = emailInput.value.trim();
+
+    if (!email || !email.includes('@')) {
+        statusEl.innerHTML = '<p style="color: #f44336;">❌ Inserisci un indirizzo email valido</p>';
+        return;
+    }
+
     statusEl.innerHTML = '<p style="color: #00d9ff;">⏳ Invio email di test in corso...</p>';
 
     try {
@@ -5302,12 +5501,74 @@ async function sendTestEmail() {
 
         if (data.success) {
             statusEl.innerHTML = `<p style="color: #4caf50;">✅ Email di test inviata a ${email}!</p>`;
+            setTimeout(() => {
+                closeTestEmailModal();
+            }, 2000);
         } else {
             statusEl.innerHTML = `<p style="color: #f44336;">❌ Invio fallito: ${data.error}</p>`;
         }
     } catch (error) {
         statusEl.innerHTML = `<p style="color: #f44336;">❌ Errore: ${error.message}</p>`;
     }
+}
+
+// ==================== CONFIRM DIALOG MODAL ====================
+let confirmDialogCallback = null;
+
+function showConfirmDialog(title, message, buttonText, callback) {
+    document.getElementById('confirm-dialog-title').textContent = title;
+    document.getElementById('confirm-dialog-message').textContent = message;
+    document.getElementById('confirm-dialog-yes').textContent = buttonText || 'Conferma';
+    confirmDialogCallback = callback;
+    document.getElementById('confirm-dialog-yes').onclick = () => {
+        closeConfirmDialog();
+        if (confirmDialogCallback) confirmDialogCallback();
+    };
+    document.getElementById('confirm-dialog-modal').style.display = 'flex';
+}
+
+function closeConfirmDialog() {
+    document.getElementById('confirm-dialog-modal').style.display = 'none';
+    confirmDialogCallback = null;
+}
+
+// ==================== NOTIFICATION TOAST ====================
+function showNotification(message, type = 'info') {
+    // Remove existing notification if any
+    const existing = document.querySelector('.toast-notification');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.className = 'toast-notification';
+    toast.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        padding: 1rem 1.5rem;
+        border-radius: 8px;
+        color: white;
+        font-weight: 500;
+        z-index: 10000;
+        animation: slideIn 0.3s ease;
+        max-width: 350px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    `;
+
+    if (type === 'success') {
+        toast.style.background = '#4caf50';
+    } else if (type === 'error') {
+        toast.style.background = '#f44336';
+    } else {
+        toast.style.background = '#00d9ff';
+    }
+
+    toast.textContent = message;
+    document.body.appendChild(toast);
+
+    setTimeout(() => {
+        toast.style.animation = 'slideOut 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
 }
 
 // ==================== FILTER PLAYER CALENDAR ====================

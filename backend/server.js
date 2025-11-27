@@ -1298,7 +1298,9 @@ app.get('/api/stats/storage', async (req, res) => {
 // GET /api/stats/bookings - Statistiche prenotazioni con filtri
 app.get('/api/stats/bookings', async (req, res) => {
   try {
-    const { from_date, to_date, sport_type, period } = req.query;
+    const { from_date, to_date, sport_type, period, user_id, customer_name } = req.query;
+
+    console.log('[Stats] Filtri ricevuti:', { from_date, to_date, sport_type, customer_name });
 
     // Build base query with filters
     let whereClause = "WHERE b.status != 'cancelled'";
@@ -1315,6 +1317,11 @@ app.get('/api/stats/bookings', async (req, res) => {
     if (sport_type) {
       params.push(sport_type);
       whereClause += ' AND c.sport_type = $' + params.length;
+    }
+    // Filtro giocatore per customer_name (la tabella bookings non ha user_id)
+    if (customer_name) {
+      params.push('%' + customer_name + '%');
+      whereClause += ' AND LOWER(b.customer_name) LIKE LOWER($' + params.length + ')';
     }
 
     // Total bookings count

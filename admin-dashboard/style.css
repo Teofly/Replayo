@@ -778,6 +778,158 @@ body {
 }
 
 /* ========================================
+   PLAYER BOOKINGS SEARCH MODAL
+   ======================================== */
+.player-suggestions-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-top: 4px;
+    z-index: 100;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    max-height: 250px;
+    overflow-y: auto;
+}
+
+.player-suggestion-item {
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    transition: background 0.15s ease;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.player-suggestion-item:last-child {
+    border-bottom: none;
+}
+
+.player-suggestion-item:hover,
+.player-suggestion-item.selected {
+    background: rgba(0, 255, 245, 0.15);
+}
+
+.player-suggestion-item .suggestion-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+}
+
+.player-suggestion-item .suggestion-details {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+/* Booking items in search results */
+.booking-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background: var(--bg-dark);
+    border-radius: 8px;
+    margin-bottom: 0.5rem;
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+}
+
+.booking-item:hover {
+    background: rgba(0, 255, 245, 0.1);
+    border-color: var(--accent-primary);
+}
+
+.booking-item.past {
+    opacity: 0.7;
+}
+
+.booking-item.past:hover {
+    opacity: 1;
+}
+
+.booking-item-main {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.booking-item-date {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+.booking-item-date .date-text {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.booking-item-date .time-text {
+    color: var(--accent-primary);
+    font-size: 0.9rem;
+}
+
+.booking-item-info {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.booking-item-info .court-name {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.booking-item-info .sport-badge {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+.sport-badge.sport-padel {
+    background: rgba(0, 150, 255, 0.2);
+    color: #00a8ff;
+}
+
+.sport-badge.sport-tennis {
+    background: rgba(255, 200, 0, 0.2);
+    color: #ffc800;
+}
+
+.sport-badge.sport-calcetto {
+    background: rgba(0, 200, 100, 0.2);
+    color: #00c864;
+}
+
+.booking-item-status {
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.booking-item-status.status-clickable {
+    padding: 0.35rem 0.75rem;
+    border-radius: 6px;
+    background: rgba(255, 193, 7, 0.15);
+    transition: all 0.2s ease;
+}
+
+.booking-item-status.status-clickable:hover {
+    background: rgba(40, 167, 69, 0.25);
+    color: var(--success) !important;
+    transform: scale(1.05);
+}
+
+/* Search highlight states */
+.timeline-booking-bar.search-highlight {
+    box-shadow: 0 0 0 3px var(--accent-primary), 0 4px 16px rgba(0, 255, 245, 0.6);
+    z-index: 10;
+    transform: scaleY(1.1);
+}
+
+/* ========================================
    BOOKING DETAILS MODAL
    ======================================== */
 .booking-details-grid {
@@ -1829,9 +1981,14 @@ body {
     background: linear-gradient(135deg, #f59e0b, #d97706) !important; /* Arancione/Giallo */
 }
 
-/* Colori prenotazioni - CONFIRMED (stesso colore blu per tutti gli sport) */
+/* Colori prenotazioni - CONFIRMED da Club (admin) - Blu */
 .timeline-booking-bar.status-confirmed {
     background: linear-gradient(135deg, #3b82f6, #2563eb) !important; /* Blu */
+}
+
+/* Colori prenotazioni - CONFIRMED da App (utente) - Verde */
+.timeline-booking-bar.status-confirmed.source-app {
+    background: linear-gradient(135deg, #10b981, #059669) !important; /* Verde */
 }
 
 /* Cancelled - sempre rosso opaco */
@@ -1989,6 +2146,11 @@ body {
     background: var(--primary);
     border-color: var(--primary);
     color: white;
+}
+
+.sport-filter-btn.small {
+    padding: 4px 10px;
+    font-size: 0.75rem;
 }
 
 .sport-filter-btn[data-sport="padel"].active {
@@ -2414,4 +2576,27 @@ body {
 #users-filter-verified option {
     background: var(--bg-card);
     color: var(--text-primary);
+}
+
+/* Toast notification animations */
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes slideOut {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(100%);
+        opacity: 0;
+    }
 }
