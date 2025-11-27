@@ -765,6 +765,19 @@ body {
     white-space: nowrap;
 }
 
+/* Current Time Indicator */
+.current-time-indicator {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: linear-gradient(180deg, #ff8c00 0%, #ff6600 100%);
+    z-index: 100;
+    pointer-events: none;
+    box-shadow: 0 0 8px rgba(255, 140, 0, 0.6), 0 0 15px rgba(255, 140, 0, 0.3);
+    transition: left 0.3s ease;
+}
+
 .timeline-booking {
     background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
     border-radius: 4px;

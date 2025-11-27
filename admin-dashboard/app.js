@@ -919,6 +919,65 @@ async function renderDailyTimeline(dateStr) {
 
         container.innerHTML = html;
 
+        // Add current time indicator (only for today) - via DOM manipulation
+        const today = new Date();
+        const italianTime = new Date(today.toLocaleString('en-US', { timeZone: 'Europe/Rome' }));
+        const todayStr = italianTime.toISOString().split('T')[0];
+
+        if (dateStr === todayStr) {
+            const currentHour = italianTime.getHours();
+            const currentMinute = italianTime.getMinutes();
+            const currentTotalMinutes = currentHour * 60 + currentMinute;
+            const timelineStartMin = startHour * 60;
+            const timelineTotalMin = hoursCount * 60;
+
+            // Only show if current time is within timeline range (8:00-22:00)
+            if (currentTotalMinutes >= timelineStartMin && currentTotalMinutes < (endHour * 60)) {
+                const leftPercent = ((currentTotalMinutes - timelineStartMin) / timelineTotalMin) * 100;
+
+                // Add indicator to each timeline-slots-container
+                const slotsContainers = container.querySelectorAll('.timeline-slots-container');
+                slotsContainers.forEach(slotsContainer => {
+                    const indicator = document.createElement('div');
+                    indicator.className = 'current-time-indicator';
+                    indicator.style.left = `${leftPercent}%`;
+                    slotsContainer.appendChild(indicator);
+                });
+            }
+
+            // Update indicator position every minute
+            if (window.currentTimeInterval) {
+                clearInterval(window.currentTimeInterval);
+            }
+
+            window.currentTimeInterval = setInterval(() => {
+                const now = new Date();
+                const italianNow = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Rome' }));
+                const nowStr = italianNow.toISOString().split('T')[0];
+
+                if (dateStr === nowStr) {
+                    const hour = italianNow.getHours();
+                    const minute = italianNow.getMinutes();
+                    const totalMin = hour * 60 + minute;
+
+                    if (totalMin >= timelineStartMin && totalMin < (endHour * 60)) {
+                        const newLeftPercent = ((totalMin - timelineStartMin) / timelineTotalMin) * 100;
+                        const indicators = container.querySelectorAll('.current-time-indicator');
+                        indicators.forEach(indicator => {
+                            indicator.style.left = `${newLeftPercent}%`;
+                        });
+                    }
+                } else {
+                    clearInterval(window.currentTimeInterval);
+                }
+            }, 60000);
+        } else {
+            // Not today, clear any existing interval
+            if (window.currentTimeInterval) {
+                clearInterval(window.currentTimeInterval);
+            }
+        }
+
         // Re-apply sport filter if active
         if (typeof currentSportFilter !== 'undefined' && currentSportFilter !== null) {
             filterBySport(currentSportFilter);
