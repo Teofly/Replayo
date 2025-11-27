@@ -1995,8 +1995,8 @@ app.post('/api/admin/users/:id/send-verification', async (req, res) => {
       subject: 'Conferma il tuo account RePlayo',
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 30px; text-align: center;">
-            <h1 style="color: #00d9ff; margin: 0;">RePlayo</h1>
+          <div style="background: linear-gradient(135deg, #00d9ff 0%, #00b4d8 100%); padding: 30px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0;">RePlayo</h1>
           </div>
           <div style="padding: 30px; background: #f5f5f5;">
             <h2 style="color: #333;">Ciao ${user.name}!</h2>
@@ -2467,16 +2467,18 @@ app.post('/api/bookings', async (req, res) => {
     
     // Determina stato iniziale (solo admin può auto-confermare)
     const status = canAutoConfirm ? 'confirmed' : 'pending';
-    
+    // Determina fonte della prenotazione
+    const booking_source = isAuthenticated ? 'admin' : 'app';
+
     // Crea prenotazione con player_names
     const bookingResult = await pool.query(
       `INSERT INTO bookings (court_id, booking_date, start_time, end_time, duration_minutes,
          customer_name, customer_email, customer_phone, num_players,
-         total_price, price_per_player, status, notes, player_names)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
+         total_price, price_per_player, status, notes, player_names, booking_source)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *`,
       [court_id, booking_date, start_time, end_time, duration_minutes,
        customer_name, customer_email, customer_phone, num_players || 4,
-       total_price, price_per_player, status, notes, playerNames]
+       total_price, price_per_player, status, notes, playerNames, booking_source]
     );
 
     const booking = bookingResult.rows[0];
@@ -2785,6 +2787,31 @@ app.put('/api/bookings/:id', async (req, res) => {
     const { id } = req.params;
     const { court_id, booking_date, start_time, end_time, customer_name, customer_email, customer_phone, num_players, notes, payment_status, players } = req.body;
 
+    // Recupera la prenotazione esistente per avere i valori attuali
+    const existingResult = await pool.query('SELECT * FROM bookings WHERE id = $1', [id]);
+    if (existingResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Prenotazione non trovata' });
+    }
+    const existing = existingResult.rows[0];
+
+    // Usa i nuovi valori o quelli esistenti
+    const finalCourtId = court_id || existing.court_id;
+    const finalDate = booking_date || existing.booking_date;
+    const finalStartTime = start_time || existing.start_time;
+    const finalEndTime = end_time || existing.end_time;
+
+    // Verifica conflitti con altre prenotazioni (escludendo quella corrente)
+    const conflictResult = await pool.query(
+      `SELECT id FROM bookings
+       WHERE court_id = $1 AND booking_date = $2 AND status NOT IN ('cancelled') AND id != $3
+       AND ((start_time <= $4 AND end_time > $4) OR (start_time < $5 AND end_time >= $5) OR (start_time >= $4 AND end_time <= $5))`,
+      [finalCourtId, finalDate, id, finalStartTime, finalEndTime]
+    );
+
+    if (conflictResult.rows.length > 0) {
+      return res.status(409).json({ error: 'Slot già prenotato da un\'altra prenotazione' });
+    }
+
     // Estrai player_names da players
     const playerNames = players && Array.isArray(players)
       ? players.map(p => p.player_name || p.name).filter(n => n)
@@ -2973,6 +3000,8 @@ app.get('/api/admin/unified-users', async (req, res) => {
       fullQuery += ` AND is_registered = true`;
     } else if (type === 'players') {
       fullQuery += ` AND is_registered = false`;
+    } else if (type === 'admin') {
+      fullQuery += ` AND is_admin = true`;
     }
 
     fullQuery += ' ORDER BY name ASC';
@@ -3962,6 +3991,184 @@ app.get('/api/settings/smtp/test', async (req, res) => {
     res.json({ success: true, message: 'Connessione SMTP riuscita' });
   } catch (error) {
     console.error('SMTP test error:', error);
+    res.json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/settings/smtp/send-test-emails - Send all test email templates
+app.post('/api/settings/smtp/send-test-emails', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ success: false, error: 'Email richiesta' });
+    }
+
+    if (!smtpSettings.host || !smtpSettings.user) {
+      return res.json({ success: false, error: 'SMTP non configurato' });
+    }
+
+    const transporter = nodemailer.createTransport({
+      host: smtpSettings.host,
+      port: smtpSettings.port,
+      secure: smtpSettings.secure,
+      auth: {
+        user: smtpSettings.user,
+        pass: smtpSettings.pass
+      }
+    });
+
+    const fromAddress = `"${smtpSettings.fromName}" <${smtpSettings.from || smtpSettings.user}>`;
+    const results = [];
+
+    // 1. Email di conferma account
+    try {
+      await transporter.sendMail({
+        from: fromAddress,
+        to: email,
+        subject: '[TEST] Conferma il tuo account RePlayo',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 12px; overflow: hidden;">
+            <div style="background: linear-gradient(135deg, #00d9ff 0%, #00b4d8 100%); padding: 30px; text-align: center;">
+              <h1 style="color: #ffffff; margin: 0; font-size: 32px;">RePlayo</h1>
+              <p style="color: #ffffff; margin: 10px 0 0 0; font-size: 14px;">Rivedi le tue partite</p>
+            </div>
+            <div style="padding: 35px 30px; background: #ffffff;">
+              <h2 style="color: #1a1a2e; margin: 0 0 20px 0; font-size: 22px;">Ciao Mario!</h2>
+              <p style="color: #444444; font-size: 16px; line-height: 1.6; margin: 0 0 25px 0;">
+                Grazie per esserti registrato su RePlayo. Per completare la registrazione e attivare il tuo account,
+                clicca sul pulsante qui sotto:
+              </p>
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="#"
+                   style="background: linear-gradient(135deg, #00d9ff 0%, #0099cc 100%); color: #ffffff; padding: 16px 40px; text-decoration: none;
+                          border-radius: 8px; font-weight: bold; display: inline-block; font-size: 16px; box-shadow: 0 4px 15px rgba(0, 217, 255, 0.3);">
+                  Conferma Email
+                </a>
+              </div>
+              <p style="color: #666666; font-size: 14px; line-height: 1.5; margin: 25px 0 10px 0;">
+                Se non hai creato tu questo account, puoi ignorare questa email.
+              </p>
+              <p style="color: #888888; font-size: 13px; margin: 0;">
+                Il link scade tra 24 ore.
+              </p>
+            </div>
+            <div style="padding: 20px; text-align: center; background: #f8f9fa; border-top: 1px solid #e0e0e0;">
+              <p style="color: #888888; margin: 0; font-size: 12px;">
+                © 2024 RePlayo - Tutti i diritti riservati
+              </p>
+            </div>
+          </div>
+          <p style="color: #ff9800; text-align: center; margin-top: 20px; font-weight: bold;">⚠️ QUESTA È UNA EMAIL DI TEST</p>
+        `
+      });
+      results.push({ type: 'Conferma Account', success: true });
+    } catch (err) {
+      results.push({ type: 'Conferma Account', success: false, error: err.message });
+    }
+
+    // 2. Email di recupero password (con password temporanea)
+    try {
+      await transporter.sendMail({
+        from: fromAddress,
+        to: email,
+        subject: '[TEST] Recupero Password RePlayo',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 12px; overflow: hidden;">
+            <div style="background: linear-gradient(135deg, #00d9ff 0%, #00b4d8 100%); padding: 30px; text-align: center;">
+              <h1 style="color: #ffffff; margin: 0; font-size: 32px;">RePlayo</h1>
+              <p style="color: #ffffff; margin: 10px 0 0 0; font-size: 14px;">Recupero Password</p>
+            </div>
+            <div style="padding: 35px 30px; background: #ffffff;">
+              <h2 style="color: #1a1a2e; margin: 0 0 20px 0; font-size: 22px;">Ciao Mario!</h2>
+              <p style="color: #444444; font-size: 16px; line-height: 1.6; margin: 0 0 25px 0;">
+                Hai richiesto il recupero della password del tuo account RePlayo.
+                Abbiamo generato una nuova password temporanea per te:
+              </p>
+              <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0;">
+                <p style="color: #666; margin: 0 0 10px 0; font-size: 14px;">La tua nuova password:</p>
+                <p style="color: #1a1a2e; font-size: 28px; font-weight: bold; margin: 0; letter-spacing: 3px; font-family: monospace;">AB12CD34</p>
+              </div>
+              <p style="color: #666666; font-size: 14px; line-height: 1.5; margin: 25px 0 10px 0;">
+                Ti consigliamo di cambiare questa password dopo il primo accesso.
+              </p>
+              <p style="color: #888888; font-size: 13px; margin: 20px 0 0 0;">
+                Se non hai richiesto il recupero della password, contatta immediatamente il supporto.
+              </p>
+            </div>
+            <div style="padding: 20px; text-align: center; background: #f8f9fa; border-top: 1px solid #e0e0e0;">
+              <p style="color: #888888; margin: 0; font-size: 12px;">
+                © 2024 RePlayo - Tutti i diritti riservati
+              </p>
+            </div>
+          </div>
+          <p style="color: #ff9800; text-align: center; margin-top: 20px; font-weight: bold;">⚠️ QUESTA È UNA EMAIL DI TEST</p>
+        `
+      });
+      results.push({ type: 'Recupero Password', success: true });
+    } catch (err) {
+      results.push({ type: 'Recupero Password', success: false, error: err.message });
+    }
+
+    // 3. Email di reset password (con link)
+    try {
+      await transporter.sendMail({
+        from: fromAddress,
+        to: email,
+        subject: '[TEST] Reset Password RePlayo',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 12px; overflow: hidden;">
+            <div style="background: linear-gradient(135deg, #00d9ff 0%, #00b4d8 100%); padding: 30px; text-align: center;">
+              <h1 style="color: #ffffff; margin: 0; font-size: 32px;">RePlayo</h1>
+              <p style="color: #ffffff; margin: 10px 0 0 0; font-size: 14px;">Reset Password</p>
+            </div>
+            <div style="padding: 35px 30px; background: #ffffff;">
+              <h2 style="color: #1a1a2e; margin: 0 0 20px 0; font-size: 22px;">Ciao Mario!</h2>
+              <p style="color: #444444; font-size: 16px; line-height: 1.6; margin: 0 0 25px 0;">
+                Abbiamo ricevuto una richiesta di reset della password per il tuo account RePlayo.
+                Clicca sul pulsante qui sotto per impostare una nuova password:
+              </p>
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="#"
+                   style="background: linear-gradient(135deg, #00d9ff 0%, #0099cc 100%); color: #ffffff; padding: 16px 40px; text-decoration: none;
+                          border-radius: 8px; font-weight: bold; display: inline-block; font-size: 16px; box-shadow: 0 4px 15px rgba(0, 217, 255, 0.3);">
+                  Reimposta Password
+                </a>
+              </div>
+              <p style="color: #666666; font-size: 14px; line-height: 1.5; margin: 25px 0 10px 0;">
+                Se il pulsante non funziona, copia e incolla questo link nel browser:
+              </p>
+              <p style="color: #0099cc; font-size: 12px; word-break: break-all;">
+                https://api.teofly.it/reset-password.html?token=example-token
+              </p>
+              <p style="color: #888888; font-size: 13px; margin: 20px 0 0 0;">
+                Il link scade tra 1 ora. Se non hai richiesto il reset della password, ignora questa email.
+              </p>
+            </div>
+            <div style="padding: 20px; text-align: center; background: #f8f9fa; border-top: 1px solid #e0e0e0;">
+              <p style="color: #888888; margin: 0; font-size: 12px;">
+                © 2024 RePlayo - Tutti i diritti riservati
+              </p>
+            </div>
+          </div>
+          <p style="color: #ff9800; text-align: center; margin-top: 20px; font-weight: bold;">⚠️ QUESTA È UNA EMAIL DI TEST</p>
+        `
+      });
+      results.push({ type: 'Reset Password', success: true });
+    } catch (err) {
+      results.push({ type: 'Reset Password', success: false, error: err.message });
+    }
+
+    console.log(`[SMTP] Test emails sent to ${email}:`, results);
+
+    const allSuccess = results.every(r => r.success);
+    res.json({
+      success: allSuccess,
+      results,
+      message: allSuccess ? 'Tutte le email di prova inviate con successo' : 'Alcune email non sono state inviate'
+    });
+  } catch (error) {
+    console.error('Send test emails error:', error);
     res.json({ success: false, error: error.message });
   }
 });

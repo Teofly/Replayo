@@ -104,8 +104,8 @@ async function sendVerificationEmail(email, name, token) {
     subject: 'Conferma il tuo account RePlayo',
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 12px; overflow: hidden;">
-        <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 30px; text-align: center;">
-          <h1 style="color: #00d9ff; margin: 0; font-size: 32px;">RePlayo</h1>
+        <div style="background: linear-gradient(135deg, #00d9ff 0%, #00b4d8 100%); padding: 30px; text-align: center;">
+          <h1 style="color: #ffffff; margin: 0; font-size: 32px;">RePlayo</h1>
           <p style="color: #ffffff; margin: 10px 0 0 0; font-size: 14px;">Rivedi le tue partite</p>
         </div>
         <div style="padding: 35px 30px; background: #ffffff;">
@@ -748,8 +748,8 @@ function setupAuthRoutes(app, pool) {
         subject: 'Recupero Password RePlayo',
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 12px; overflow: hidden;">
-            <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 30px; text-align: center;">
-              <h1 style="color: #00d9ff; margin: 0; font-size: 32px;">RePlayo</h1>
+            <div style="background: linear-gradient(135deg, #00d9ff 0%, #00b4d8 100%); padding: 30px; text-align: center;">
+              <h1 style="color: #ffffff; margin: 0; font-size: 32px;">RePlayo</h1>
               <p style="color: #ffffff; margin: 10px 0 0 0; font-size: 14px;">Recupero Password</p>
             </div>
             <div style="padding: 35px 30px; background: #ffffff;">
@@ -855,8 +855,8 @@ function setupAuthRoutes(app, pool) {
         subject: 'Reset Password RePlayo',
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 12px; overflow: hidden;">
-            <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 30px; text-align: center;">
-              <h1 style="color: #00d9ff; margin: 0; font-size: 32px;">RePlayo</h1>
+            <div style="background: linear-gradient(135deg, #00d9ff 0%, #00b4d8 100%); padding: 30px; text-align: center;">
+              <h1 style="color: #ffffff; margin: 0; font-size: 32px;">RePlayo</h1>
               <p style="color: #ffffff; margin: 10px 0 0 0; font-size: 14px;">Reset Password</p>
             </div>
             <div style="padding: 35px 30px; background: #ffffff;">

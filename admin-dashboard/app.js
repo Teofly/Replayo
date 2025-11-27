@@ -718,18 +718,54 @@ function refreshDailyBookings() {
     }
 }
 
+function navigateDay(direction) {
+    if (!selectedDate) {
+        // If no date selected, use today
+        const today = new Date();
+        const y = today.getFullYear();
+        const m = String(today.getMonth() + 1).padStart(2, '0');
+        const d = String(today.getDate()).padStart(2, '0');
+        selectedDate = `${y}-${m}-${d}`;
+    }
+
+    // Parse the current date
+    const [year, month, day] = selectedDate.split('-').map(Number);
+    const currentDate = new Date(year, month - 1, day);
+
+    // Add or subtract days
+    currentDate.setDate(currentDate.getDate() + direction);
+
+    // Format the new date (avoid timezone issues)
+    const newYear = currentDate.getFullYear();
+    const newMonth = String(currentDate.getMonth() + 1).padStart(2, '0');
+    const newDay = String(currentDate.getDate()).padStart(2, '0');
+    const newDateStr = `${newYear}-${newMonth}-${newDay}`;
+
+    // Select the new date
+    selectDate(newDateStr);
+}
+
 function selectDate(dateStr) {
     selectedDate = dateStr;
 
-    // Update selected state in calendar
-    document.querySelectorAll('.calendar-day').forEach(d => d.classList.remove('selected'));
-    const selectedEl = document.querySelector(`.calendar-day[data-date="${dateStr}"]`);
-    if (selectedEl) selectedEl.classList.add('selected');
+    // Parse the selected date
+    const [year, month, day] = dateStr.split('-').map(Number);
+
+    // Check if we need to change the calendar month view
+    if (year !== currentYear || (month - 1) !== currentMonth) {
+        currentYear = year;
+        currentMonth = month - 1; // month is 0-indexed in JS
+        renderCalendar(); // This will re-render and highlight the selected date
+    } else {
+        // Same month, just update selected state in calendar
+        document.querySelectorAll('.calendar-day').forEach(d => d.classList.remove('selected'));
+        const selectedEl = document.querySelector(`.calendar-day[data-date="${dateStr}"]`);
+        if (selectedEl) selectedEl.classList.add('selected');
+    }
 
     // Update display - parse date parts to avoid timezone issues
     const displayEl = document.getElementById('selected-date-display');
     if (displayEl) {
-        const [year, month, day] = dateStr.split('-').map(Number);
         const date = new Date(year, month - 1, day); // month is 0-indexed
         displayEl.textContent = date.toLocaleDateString('it-IT', {
             weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
@@ -811,9 +847,11 @@ async function renderDailyTimeline(dateStr) {
                 })();
 
                 html += `
-                    <div class="timeline-booking-bar status-${booking.status || "pending"} sport-${court.sport_type || 'other'}"
+                    <div class="timeline-booking-bar status-${booking.status || "pending"} sport-${court.sport_type || 'other'} source-${booking.booking_source || 'admin'}"
                          style="left: ${leftPercent}%; width: ${widthPercent}%;"
-                         title="${booking.customer_name} | ${bookingStart} - ${endTime}"
+                         data-user-id="${booking.user_id || ''}"
+                         data-customer-name="${booking.customer_name || ''}"
+                         title="${booking.customer_name} | ${bookingStart} - ${endTime} | ${booking.booking_source === 'app' ? 'Da App' : 'Da Club'}"
                          onclick="showBookingDetails('${booking.id}')">
                         <span class="booking-name">${booking.customer_name}</span>
                         <span class="booking-time">${bookingStart}-${endTime}</span>
@@ -847,6 +885,11 @@ async function renderDailyTimeline(dateStr) {
         // Re-apply sport filter if active
         if (typeof currentSportFilter !== 'undefined' && currentSportFilter !== null) {
             filterBySport(currentSportFilter);
+        }
+
+        // Re-apply player filter if active
+        if (typeof currentPlayerFilter !== 'undefined' && currentPlayerFilter !== null) {
+            applyPlayerFilter();
         }
 
     } catch (error) {
@@ -2632,41 +2675,622 @@ function filterBySport(sport) {
 }
 
 // ==========================================
+// PLAYER BOOKINGS SEARCH MODAL
+// ==========================================
+let playerBookingsSearchTimeout = null;
+let playerBookingsSuggestions = [];
+let playerBookingsSuggestionIndex = -1;
+let selectedPlayerForBookings = null;
+let modalSportFilter = null;
+
+function openPlayerBookingsSearch() {
+    const modal = document.getElementById('player-bookings-modal');
+    modal.style.display = 'flex';
+
+    // Reset state
+    document.getElementById('player-search-container').style.display = 'block';
+    document.getElementById('player-bookings-search-input').value = '';
+    document.getElementById('player-bookings-suggestions').style.display = 'none';
+    document.getElementById('selected-player-info').style.display = 'none';
+    document.getElementById('player-bookings-results').innerHTML = '';
+    selectedPlayerForBookings = null;
+    playerBookingsSuggestions = [];
+    playerBookingsSuggestionIndex = -1;
+    modalSportFilter = null;
+
+    // Reset sport filter buttons
+    document.querySelectorAll('.modal-sport-filters .sport-filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.dataset.sport === 'all') btn.classList.add('active');
+    });
+
+    // Focus input
+    setTimeout(() => {
+        document.getElementById('player-bookings-search-input').focus();
+    }, 100);
+}
+
+function filterModalBySport(sport) {
+    modalSportFilter = sport;
+
+    // Update active button
+    document.querySelectorAll('.modal-sport-filters .sport-filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if ((sport === null && btn.dataset.sport === 'all') || btn.dataset.sport === sport) {
+            btn.classList.add('active');
+        }
+    });
+
+    // Filter visible booking items
+    document.querySelectorAll('#player-bookings-results .booking-item').forEach(item => {
+        const itemSport = item.dataset.sport;
+
+        if (sport === null || itemSport === sport) {
+            item.style.display = '';
+        } else {
+            item.style.display = 'none';
+        }
+    });
+
+    // Update section counts
+    document.querySelectorAll('#player-bookings-results .bookings-section').forEach(section => {
+        const visibleItems = section.querySelectorAll('.booking-item:not([style*="display: none"])').length;
+        const header = section.querySelector('h4');
+        if (header) {
+            const baseText = header.textContent.replace(/\(\d+\)/, '').trim();
+            header.textContent = `${baseText} (${visibleItems})`;
+        }
+        // Hide section if no visible items
+        section.style.display = visibleItems > 0 ? '' : 'none';
+    });
+}
+
+function closePlayerBookingsModal() {
+    document.getElementById('player-bookings-modal').style.display = 'none';
+}
+
+function onPlayerBookingsSearchInput() {
+    const input = document.getElementById('player-bookings-search-input');
+    const query = input.value.trim();
+
+    clearTimeout(playerBookingsSearchTimeout);
+
+    if (query.length < 2) {
+        document.getElementById('player-bookings-suggestions').style.display = 'none';
+        playerBookingsSuggestions = [];
+        playerBookingsSuggestionIndex = -1;
+        return;
+    }
+
+    playerBookingsSearchTimeout = setTimeout(async () => {
+        await searchPlayersForBookings(query);
+    }, 200);
+}
+
+async function searchPlayersForBookings(query) {
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/admin/unified-users?search=${encodeURIComponent(query)}&limit=10`);
+        const data = await response.json();
+
+        if (data.success && data.users && data.users.length > 0) {
+            playerBookingsSuggestions = data.users;
+            playerBookingsSuggestionIndex = -1;
+            renderPlayerBookingsSuggestions();
+        } else {
+            playerBookingsSuggestions = [];
+            document.getElementById('player-bookings-suggestions').style.display = 'none';
+        }
+    } catch (error) {
+        console.error('Error searching players:', error);
+    }
+}
+
+function renderPlayerBookingsSuggestions() {
+    const dropdown = document.getElementById('player-bookings-suggestions');
+
+    dropdown.innerHTML = playerBookingsSuggestions.map((user, index) => {
+        const name = user.fullName || `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'N/A';
+        const details = [user.email, user.phone].filter(Boolean).join(' - ') || '';
+        const isSelected = index === playerBookingsSuggestionIndex;
+
+        return `<div class="player-suggestion-item ${isSelected ? 'selected' : ''}"
+                     data-index="${index}"
+                     onclick="selectPlayerForBookings(${index})">
+            <div class="suggestion-name">${name}</div>
+            ${details ? `<div class="suggestion-details">${details}</div>` : ''}
+        </div>`;
+    }).join('');
+
+    dropdown.style.display = 'block';
+}
+
+function onPlayerBookingsSearchKeydown(event) {
+    const dropdown = document.getElementById('player-bookings-suggestions');
+
+    if (dropdown.style.display === 'none' && event.key !== 'Escape') return;
+
+    switch (event.key) {
+        case 'ArrowDown':
+            event.preventDefault();
+            if (playerBookingsSuggestionIndex < playerBookingsSuggestions.length - 1) {
+                playerBookingsSuggestionIndex++;
+                renderPlayerBookingsSuggestions();
+                scrollSuggestionIntoView();
+            }
+            break;
+        case 'ArrowUp':
+            event.preventDefault();
+            if (playerBookingsSuggestionIndex > 0) {
+                playerBookingsSuggestionIndex--;
+                renderPlayerBookingsSuggestions();
+                scrollSuggestionIntoView();
+            }
+            break;
+        case 'Enter':
+            event.preventDefault();
+            if (playerBookingsSuggestionIndex >= 0 && playerBookingsSuggestions[playerBookingsSuggestionIndex]) {
+                selectPlayerForBookings(playerBookingsSuggestionIndex);
+            }
+            break;
+        case 'Escape':
+            event.preventDefault();
+            if (dropdown.style.display !== 'none') {
+                dropdown.style.display = 'none';
+            } else {
+                closePlayerBookingsModal();
+            }
+            break;
+    }
+}
+
+function scrollSuggestionIntoView() {
+    const dropdown = document.getElementById('player-bookings-suggestions');
+    const selectedItem = dropdown.querySelector('.player-suggestion-item.selected');
+    if (selectedItem) {
+        selectedItem.scrollIntoView({ block: 'nearest' });
+    }
+}
+
+async function selectPlayerForBookings(index) {
+    const user = playerBookingsSuggestions[index];
+    if (!user) return;
+
+    selectedPlayerForBookings = user;
+
+    // Update UI - hide search, show selected player
+    const name = user.fullName || `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'N/A';
+    document.getElementById('selected-player-name').textContent = name;
+    document.getElementById('selected-player-info').style.display = 'flex';
+    document.getElementById('player-search-container').style.display = 'none';
+
+    // Load bookings for this player
+    await loadPlayerBookings(user);
+}
+
+function clearSelectedPlayer() {
+    selectedPlayerForBookings = null;
+    document.getElementById('selected-player-info').style.display = 'none';
+    document.getElementById('player-search-container').style.display = 'block';
+    document.getElementById('player-bookings-search-input').value = '';
+    document.getElementById('player-bookings-results').innerHTML = '';
+    document.getElementById('player-bookings-search-input').focus();
+}
+
+async function loadPlayerBookings(user) {
+    const resultsDiv = document.getElementById('player-bookings-results');
+    resultsDiv.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 2rem;">Caricamento prenotazioni...</p>';
+
+    try {
+        // Search by customer name - get all bookings
+        const searchName = user.fullName || `${user.firstName || ''} ${user.lastName || ''}`.trim();
+        const response = await apiFetch(`${API_BASE_URL}/bookings?customer_name=${encodeURIComponent(searchName)}`);
+        const data = await response.json();
+
+        let bookings = data.bookings || data || [];
+
+        // Filter bookings that match this customer name (case insensitive)
+        bookings = bookings.filter(b => {
+            const customerName = (b.customer_name || '').toLowerCase();
+            return customerName.includes(searchName.toLowerCase());
+        });
+
+        if (bookings.length === 0) {
+            resultsDiv.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 2rem;">Nessuna prenotazione trovata per questo giocatore</p>';
+            return;
+        }
+
+        // Sort by date descending
+        bookings.sort((a, b) => {
+            const dateA = new Date(a.booking_date + 'T' + a.start_time);
+            const dateB = new Date(b.booking_date + 'T' + b.start_time);
+            return dateB - dateA;
+        });
+
+        // Separate into upcoming and past
+        const now = new Date();
+        const upcoming = [];
+        const past = [];
+
+        bookings.forEach(b => {
+            const bookingDateTime = new Date(b.booking_date.split('T')[0] + 'T' + b.start_time);
+            if (bookingDateTime >= now) {
+                upcoming.push(b);
+            } else {
+                past.push(b);
+            }
+        });
+
+        // Sort upcoming by date ascending (nearest first)
+        upcoming.sort((a, b) => {
+            const dateA = new Date(a.booking_date + 'T' + a.start_time);
+            const dateB = new Date(b.booking_date + 'T' + b.start_time);
+            return dateA - dateB;
+        });
+
+        let html = '';
+
+        // Upcoming bookings
+        if (upcoming.length > 0) {
+            html += `<div class="bookings-section">
+                <h4 style="color: var(--success); margin-bottom: 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border-color);">
+                    Prossime Prenotazioni (${upcoming.length})
+                </h4>
+                <div class="bookings-list">`;
+
+            upcoming.forEach(b => {
+                html += renderBookingItem(b, 'upcoming');
+            });
+
+            html += '</div></div>';
+        }
+
+        // Past bookings
+        if (past.length > 0) {
+            html += `<div class="bookings-section" style="margin-top: 1.5rem;">
+                <h4 style="color: var(--text-secondary); margin-bottom: 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border-color);">
+                    Prenotazioni Passate (${past.length})
+                </h4>
+                <div class="bookings-list">`;
+
+            past.forEach(b => {
+                html += renderBookingItem(b, 'past');
+            });
+
+            html += '</div></div>';
+        }
+
+        resultsDiv.innerHTML = html;
+
+    } catch (error) {
+        console.error('Error loading player bookings:', error);
+        resultsDiv.innerHTML = '<p style="color: var(--danger); text-align: center; padding: 2rem;">Errore nel caricamento delle prenotazioni</p>';
+    }
+}
+
+function renderBookingItem(booking, type) {
+    const date = new Date(booking.booking_date.split('T')[0]);
+    const dateStr = date.toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+    const startTime = booking.start_time.substring(0, 5);
+    const endTime = booking.end_time ? booking.end_time.substring(0, 5) : '';
+    const courtName = booking.court_name || 'Campo';
+    const sportType = booking.sport_type || '';
+    const status = booking.status || 'pending';
+
+    const statusColors = {
+        confirmed: 'var(--success)',
+        pending: 'var(--warning)',
+        cancelled: 'var(--danger)'
+    };
+
+    const statusLabels = {
+        confirmed: 'Confermata',
+        pending: 'In attesa',
+        cancelled: 'Cancellata'
+    };
+
+    const isPast = type === 'past';
+
+    // Status element - clickable only if pending
+    let statusHtml;
+    if (status === 'pending') {
+        statusHtml = `<div class="booking-item-status status-clickable"
+                           onclick="event.stopPropagation(); quickConfirmBooking('${booking.id}')"
+                           style="color: ${statusColors[status]}; cursor: pointer;"
+                           title="Clicca per confermare">
+            ${statusLabels[status]}
+        </div>`;
+    } else {
+        statusHtml = `<div class="booking-item-status" style="color: ${statusColors[status] || 'var(--text-secondary)'}">
+            ${statusLabels[status] || status}
+        </div>`;
+    }
+
+    return `<div class="booking-item ${isPast ? 'past' : ''}" data-sport="${sportType}" onclick="goToBookingDate('${booking.booking_date.split('T')[0]}', '${booking.id}')" style="cursor: pointer;">
+        <div class="booking-item-main">
+            <div class="booking-item-date">
+                <span class="date-text">${dateStr}</span>
+                <span class="time-text">${startTime}${endTime ? ' - ' + endTime : ''}</span>
+            </div>
+            <div class="booking-item-info">
+                <span class="court-name">${courtName}</span>
+                ${sportType ? `<span class="sport-badge sport-${sportType}">${sportType}</span>` : ''}
+            </div>
+        </div>
+        ${statusHtml}
+    </div>`;
+}
+
+async function quickConfirmBooking(bookingId) {
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/bookings/${bookingId}/confirm`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ payment_status: 'pending' })
+        });
+
+        if (response.ok) {
+            // Reload player bookings to update the list
+            if (selectedPlayerForBookings) {
+                await loadPlayerBookings(selectedPlayerForBookings);
+            }
+            // Also refresh the calendar coverage
+            loadCalendarCoverage();
+        } else {
+            alert('Errore nella conferma della prenotazione');
+        }
+    } catch (error) {
+        console.error('Error confirming booking:', error);
+        alert('Errore nella conferma della prenotazione');
+    }
+}
+
+async function loadAllPendingBookings() {
+    const resultsDiv = document.getElementById('player-bookings-results');
+    resultsDiv.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 2rem;">Caricamento prenotazioni in attesa...</p>';
+
+    // Hide search container and show a label for pending bookings
+    document.getElementById('player-search-container').style.display = 'none';
+    document.getElementById('selected-player-info').style.display = 'flex';
+    document.getElementById('selected-player-name').textContent = 'Tutte le prenotazioni in attesa';
+    selectedPlayerForBookings = { isPendingSearch: true };
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/bookings?status=pending`);
+        const data = await response.json();
+
+        let bookings = data.bookings || data || [];
+
+        // Filter only pending bookings (in case backend doesn't filter)
+        bookings = bookings.filter(b => b.status === 'pending');
+
+        if (bookings.length === 0) {
+            resultsDiv.innerHTML = '<p style="color: var(--success); text-align: center; padding: 2rem;">Nessuna prenotazione in attesa</p>';
+            return;
+        }
+
+        // Sort by date ascending (nearest first)
+        bookings.sort((a, b) => {
+            const dateA = new Date(a.booking_date.split('T')[0] + 'T' + a.start_time);
+            const dateB = new Date(b.booking_date.split('T')[0] + 'T' + b.start_time);
+            return dateA - dateB;
+        });
+
+        // Separate into upcoming and past
+        const now = new Date();
+        const upcoming = [];
+        const past = [];
+
+        bookings.forEach(b => {
+            const bookingDateTime = new Date(b.booking_date.split('T')[0] + 'T' + b.start_time);
+            if (bookingDateTime >= now) {
+                upcoming.push(b);
+            } else {
+                past.push(b);
+            }
+        });
+
+        let html = '';
+
+        // Upcoming pending bookings
+        if (upcoming.length > 0) {
+            html += `<div class="bookings-section">
+                <h4 style="color: var(--warning); margin-bottom: 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border-color);">
+                    Prossime da Confermare (${upcoming.length})
+                </h4>
+                <div class="bookings-list">`;
+
+            upcoming.forEach(b => {
+                html += renderPendingBookingItem(b, 'upcoming');
+            });
+
+            html += '</div></div>';
+        }
+
+        // Past pending bookings
+        if (past.length > 0) {
+            html += `<div class="bookings-section" style="margin-top: 1.5rem;">
+                <h4 style="color: var(--text-secondary); margin-bottom: 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border-color);">
+                    Passate non Confermate (${past.length})
+                </h4>
+                <div class="bookings-list">`;
+
+            past.forEach(b => {
+                html += renderPendingBookingItem(b, 'past');
+            });
+
+            html += '</div></div>';
+        }
+
+        resultsDiv.innerHTML = html;
+
+    } catch (error) {
+        console.error('Error loading pending bookings:', error);
+        resultsDiv.innerHTML = '<p style="color: var(--danger); text-align: center; padding: 2rem;">Errore nel caricamento delle prenotazioni</p>';
+    }
+}
+
+function renderPendingBookingItem(booking, type) {
+    const date = new Date(booking.booking_date.split('T')[0]);
+    const dateStr = date.toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+    const startTime = booking.start_time.substring(0, 5);
+    const endTime = booking.end_time ? booking.end_time.substring(0, 5) : '';
+    const courtName = booking.court_name || 'Campo';
+    const sportType = booking.sport_type || '';
+    const customerName = booking.customer_name || 'N/A';
+    const isPast = type === 'past';
+
+    return `<div class="booking-item ${isPast ? 'past' : ''}" data-sport="${sportType}" onclick="goToBookingDate('${booking.booking_date.split('T')[0]}', '${booking.id}')" style="cursor: pointer;">
+        <div class="booking-item-main">
+            <div class="booking-item-date">
+                <span class="date-text">${dateStr}</span>
+                <span class="time-text">${startTime}${endTime ? ' - ' + endTime : ''}</span>
+            </div>
+            <div class="booking-item-info">
+                <span class="customer-name" style="color: var(--text-primary); font-weight: 500;">${customerName}</span>
+                <span class="court-name">${courtName}</span>
+                ${sportType ? `<span class="sport-badge sport-${sportType}">${sportType}</span>` : ''}
+            </div>
+        </div>
+        <div class="booking-item-status status-clickable"
+             onclick="event.stopPropagation(); quickConfirmBookingFromPending('${booking.id}')"
+             style="color: var(--warning); cursor: pointer;"
+             title="Clicca per confermare">
+            In attesa
+        </div>
+    </div>`;
+}
+
+async function quickConfirmBookingFromPending(bookingId) {
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/bookings/${bookingId}/confirm`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ payment_status: 'pending' })
+        });
+
+        if (response.ok) {
+            // Reload pending bookings list
+            await loadAllPendingBookings();
+            // Also refresh the calendar coverage
+            loadCalendarCoverage();
+        } else {
+            alert('Errore nella conferma della prenotazione');
+        }
+    } catch (error) {
+        console.error('Error confirming booking:', error);
+        alert('Errore nella conferma della prenotazione');
+    }
+}
+
+function goToBookingDate(dateStr, bookingId) {
+    // Close modal
+    closePlayerBookingsModal();
+
+    // Navigate to the date
+    selectDate(dateStr);
+
+    // After timeline renders, highlight and show the booking
+    setTimeout(() => {
+        const bookingBar = document.querySelector(`.timeline-booking-bar[onclick*="${bookingId}"]`);
+        if (bookingBar) {
+            bookingBar.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            bookingBar.classList.add('search-highlight');
+            setTimeout(() => bookingBar.classList.remove('search-highlight'), 3000);
+        }
+        // Open booking details
+        showBookingDetails(bookingId);
+    }, 500);
+}
+
+// ==========================================
 // BOOKING STATISTICS CHARTS
 // ==========================================
 let chartSport, chartWeek, chartMonth, chartYear;
+let statsPeriodFilter = 'month';
+let statsSportFilter = null;
 
 function getStatsDateRange() {
-    const periodFilter = document.getElementById('stats-period-filter');
-    const period = periodFilter ? periodFilter.value : 'year';
     const now = new Date();
-    const formatDate = (d) => d.toISOString().split('T')[0];
+    const formatDate = (d) => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    };
 
     let fromDate, toDate;
 
-    switch (period) {
-        case 'week':
-            const weekAgo = new Date(now);
-            weekAgo.setDate(weekAgo.getDate() - 7);
-            fromDate = formatDate(weekAgo);
-            toDate = formatDate(now);
-            break;
+    switch (statsPeriodFilter) {
         case 'month':
             fromDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
             toDate = formatDate(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+            break;
+        case '3months':
+            const threeMonthsAgo = new Date(now);
+            threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+            fromDate = formatDate(threeMonthsAgo);
+            toDate = formatDate(now);
+            break;
+        case '6months':
+            const sixMonthsAgo = new Date(now);
+            sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+            fromDate = formatDate(sixMonthsAgo);
+            toDate = formatDate(now);
+            break;
+        case 'year':
+            const oneYearAgo = new Date(now);
+            oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+            fromDate = formatDate(oneYearAgo);
+            toDate = formatDate(now);
             break;
         case 'custom':
             fromDate = document.getElementById('stats-from-date')?.value || formatDate(new Date(now.getFullYear(), 0, 1));
             toDate = document.getElementById('stats-to-date')?.value || formatDate(now);
             break;
-        case 'year':
         default:
-            fromDate = `${now.getFullYear()}-01-01`;
-            toDate = `${now.getFullYear()}-12-31`;
+            fromDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+            toDate = formatDate(new Date(now.getFullYear(), now.getMonth() + 1, 0));
             break;
     }
 
     return { fromDate, toDate };
+}
+
+function filterStatsByPeriod(period) {
+    statsPeriodFilter = period;
+
+    // Update active button
+    document.querySelectorAll('.stats-period-filters .sport-filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.dataset.period === period) {
+            btn.classList.add('active');
+        }
+    });
+
+    // Show/hide custom date inputs
+    const customDatesDiv = document.getElementById('stats-custom-dates');
+    if (customDatesDiv) {
+        customDatesDiv.style.display = period === 'custom' ? 'flex' : 'none';
+    }
+
+    // Only load stats if not custom (custom loads on date change)
+    if (period !== 'custom') {
+        loadBookingStats();
+    }
+}
+
+function filterStatsBySport(sport) {
+    statsSportFilter = sport;
+
+    // Update active button
+    document.querySelectorAll('.stats-sport-filters .sport-filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if ((sport === null && btn.dataset.sport === 'all') || btn.dataset.sport === sport) {
+            btn.classList.add('active');
+        }
+    });
+
+    loadBookingStats();
 }
 
 function onStatsFilterChange() {
@@ -2683,7 +3307,7 @@ function onStatsFilterChange() {
 async function loadBookingStats() {
     try {
         const { fromDate, toDate } = getStatsDateRange();
-        const sportFilter = document.getElementById('stats-sport-filter')?.value || '';
+        const sportFilter = statsSportFilter || '';
 
         // Build URL with filters
         let url = `${API_BASE_URL}/stats/bookings?from_date=${fromDate}&to_date=${toDate}`;
@@ -4026,6 +4650,12 @@ let usersSearchResults = [];
 function onUnifiedUsersSearchInput() {
     clearTimeout(unifiedUsersSearchTimeout);
     const searchValue = document.getElementById('users-search').value.trim();
+    const clearBtn = document.getElementById('clear-users-search');
+
+    // Show/hide clear button
+    if (clearBtn) {
+        clearBtn.style.display = searchValue.length > 0 ? 'block' : 'none';
+    }
 
     if (searchValue.length < 2) {
         hideUsersSearchDropdown();
@@ -4040,6 +4670,18 @@ function onUnifiedUsersSearchInput() {
         await showUsersSearchDropdown(searchValue);
         loadUnifiedUsers();
     }, 300);
+}
+
+// Clear users search
+function clearUsersSearch() {
+    const searchInput = document.getElementById('users-search');
+    const clearBtn = document.getElementById('clear-users-search');
+
+    if (searchInput) searchInput.value = '';
+    if (clearBtn) clearBtn.style.display = 'none';
+
+    hideUsersSearchDropdown();
+    loadUnifiedUsers();
 }
 
 // Show dropdown with search results
@@ -4596,6 +5238,51 @@ async function testSmtpConnection() {
     }
 }
 
+async function sendTestEmails() {
+    const emailInput = document.getElementById('test-email-address');
+    const resultsEl = document.getElementById('test-email-results');
+    const btn = document.getElementById('send-test-emails-btn');
+    const email = emailInput.value.trim();
+
+    if (!email || !email.includes('@')) {
+        resultsEl.innerHTML = '<p style="color: #f44336;">❌ Inserisci un indirizzo email valido</p>';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Invio in corso...';
+    resultsEl.innerHTML = '<p style="color: #00d9ff;">⏳ Invio email di prova in corso...</p>';
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/settings/smtp/send-test-emails`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            let html = '<div style="color: #4caf50; margin-bottom: 0.5rem;">✅ Email inviate con successo!</div>';
+            html += '<ul style="list-style: none; padding: 0; margin: 0;">';
+            data.results.forEach(r => {
+                const icon = r.success ? '✅' : '❌';
+                const color = r.success ? '#4caf50' : '#f44336';
+                html += `<li style="color: ${color}; padding: 0.25rem 0;">${icon} ${r.type}: ${r.success ? 'Inviata' : r.error}</li>`;
+            });
+            html += '</ul>';
+            resultsEl.innerHTML = html;
+        } else {
+            resultsEl.innerHTML = `<p style="color: #f44336;">❌ Errore: ${data.error}</p>`;
+        }
+    } catch (error) {
+        resultsEl.innerHTML = `<p style="color: #f44336;">❌ Errore di connessione: ${error.message}</p>`;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Invia Email di Prova';
+    }
+}
+
 async function sendTestEmail() {
     const email = prompt('Inserisci indirizzo email per il test:');
     if (!email) return;
@@ -4621,4 +5308,200 @@ async function sendTestEmail() {
     } catch (error) {
         statusEl.innerHTML = `<p style="color: #f44336;">❌ Errore: ${error.message}</p>`;
     }
+}
+
+// ==================== FILTER PLAYER CALENDAR ====================
+let currentPlayerFilter = null;
+let filterPlayerSuggestions = [];
+let filterPlayerSuggestionIndex = -1;
+let filterPlayerSearchTimeout = null;
+
+function openFilterPlayerModal() {
+    const modal = document.getElementById('filter-player-modal');
+    modal.style.display = 'flex';
+
+    // Reset state
+    document.getElementById('filter-player-search-input').value = '';
+    document.getElementById('filter-player-suggestions').style.display = 'none';
+    filterPlayerSuggestions = [];
+    filterPlayerSuggestionIndex = -1;
+
+    // Focus input
+    setTimeout(() => {
+        document.getElementById('filter-player-search-input').focus();
+    }, 100);
+}
+
+function closeFilterPlayerModal() {
+    document.getElementById('filter-player-modal').style.display = 'none';
+}
+
+function onFilterPlayerSearchInput() {
+    const input = document.getElementById('filter-player-search-input');
+    const query = input.value.trim();
+
+    clearTimeout(filterPlayerSearchTimeout);
+
+    if (query.length < 2) {
+        document.getElementById('filter-player-suggestions').style.display = 'none';
+        filterPlayerSuggestions = [];
+        filterPlayerSuggestionIndex = -1;
+        return;
+    }
+
+    filterPlayerSearchTimeout = setTimeout(async () => {
+        await searchPlayersForFilter(query);
+    }, 200);
+}
+
+async function searchPlayersForFilter(query) {
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/admin/unified-users?search=${encodeURIComponent(query)}&limit=10`);
+        const data = await response.json();
+
+        if (data.success && data.users && data.users.length > 0) {
+            filterPlayerSuggestions = data.users;
+            filterPlayerSuggestionIndex = -1;
+            renderFilterPlayerSuggestions();
+        } else {
+            filterPlayerSuggestions = [];
+            document.getElementById('filter-player-suggestions').style.display = 'none';
+        }
+    } catch (error) {
+        console.error('Error searching players for filter:', error);
+    }
+}
+
+function renderFilterPlayerSuggestions() {
+    const dropdown = document.getElementById('filter-player-suggestions');
+
+    dropdown.innerHTML = filterPlayerSuggestions.map((user, index) => {
+        const name = user.fullName || `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'N/A';
+        const details = [user.email, user.phone].filter(Boolean).join(' - ') || '';
+        const isSelected = index === filterPlayerSuggestionIndex;
+
+        return `<div class="player-suggestion-item ${isSelected ? 'selected' : ''}"
+                     data-index="${index}"
+                     onclick="selectPlayerForFilter(${index})">
+            <div class="suggestion-name">${name}</div>
+            ${details ? `<div class="suggestion-details">${details}</div>` : ''}
+        </div>`;
+    }).join('');
+
+    dropdown.style.display = 'block';
+}
+
+function onFilterPlayerSearchKeydown(event) {
+    const dropdown = document.getElementById('filter-player-suggestions');
+
+    if (dropdown.style.display === 'none' && event.key !== 'Escape') return;
+
+    switch (event.key) {
+        case 'ArrowDown':
+            event.preventDefault();
+            if (filterPlayerSuggestionIndex < filterPlayerSuggestions.length - 1) {
+                filterPlayerSuggestionIndex++;
+                renderFilterPlayerSuggestions();
+                scrollFilterSuggestionIntoView();
+            }
+            break;
+        case 'ArrowUp':
+            event.preventDefault();
+            if (filterPlayerSuggestionIndex > 0) {
+                filterPlayerSuggestionIndex--;
+                renderFilterPlayerSuggestions();
+                scrollFilterSuggestionIntoView();
+            }
+            break;
+        case 'Enter':
+            event.preventDefault();
+            if (filterPlayerSuggestionIndex >= 0 && filterPlayerSuggestions[filterPlayerSuggestionIndex]) {
+                selectPlayerForFilter(filterPlayerSuggestionIndex);
+            }
+            break;
+        case 'Escape':
+            closeFilterPlayerModal();
+            break;
+    }
+}
+
+function scrollFilterSuggestionIntoView() {
+    const dropdown = document.getElementById('filter-player-suggestions');
+    const selected = dropdown.querySelector('.player-suggestion-item.selected');
+    if (selected) {
+        selected.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+}
+
+function selectPlayerForFilter(index) {
+    const user = filterPlayerSuggestions[index];
+    if (!user) return;
+
+    const name = user.fullName || `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'N/A';
+
+    // Set the current filter
+    currentPlayerFilter = {
+        id: user.id,
+        name: name,
+        // Also match by customer_name for bookings without user_id
+        customerName: name.toLowerCase()
+    };
+
+    // Close modal
+    closeFilterPlayerModal();
+
+    // Update UI - show clear button and update filter button text
+    const filterBtn = document.getElementById('filter-player-btn');
+    const clearBtn = document.getElementById('clear-filter-btn');
+
+    filterBtn.innerHTML = `👤 ${name}`;
+    filterBtn.classList.remove('btn-secondary');
+    filterBtn.classList.add('btn-primary');
+    clearBtn.style.display = 'inline-block';
+
+    // Apply filter to current timeline
+    applyPlayerFilter();
+}
+
+function applyPlayerFilter() {
+    if (!currentPlayerFilter) return;
+
+    const bookingBars = document.querySelectorAll('.timeline-booking-bar');
+
+    bookingBars.forEach(bar => {
+        const userId = bar.dataset.userId;
+        const customerName = (bar.dataset.customerName || '').toLowerCase();
+
+        // Match by user_id or by customer name (for bookings without user_id)
+        const isMatch = (userId && userId == currentPlayerFilter.id) ||
+                        (customerName && customerName.includes(currentPlayerFilter.customerName));
+
+        if (isMatch) {
+            bar.style.opacity = '1';
+            bar.style.filter = 'none';
+        } else {
+            bar.style.opacity = '0.15';
+            bar.style.filter = 'grayscale(100%)';
+        }
+    });
+}
+
+function clearPlayerFilter() {
+    currentPlayerFilter = null;
+
+    // Reset UI
+    const filterBtn = document.getElementById('filter-player-btn');
+    const clearBtn = document.getElementById('clear-filter-btn');
+
+    filterBtn.innerHTML = '👤 Filtra Giocatore';
+    filterBtn.classList.remove('btn-primary');
+    filterBtn.classList.add('btn-secondary');
+    clearBtn.style.display = 'none';
+
+    // Remove filter from timeline - restore all booking bars
+    const bookingBars = document.querySelectorAll('.timeline-booking-bar');
+    bookingBars.forEach(bar => {
+        bar.style.opacity = '1';
+        bar.style.filter = 'none';
+    });
 }

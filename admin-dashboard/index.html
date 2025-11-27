@@ -118,6 +118,7 @@
                                 <div class="users-search-container" style="position: relative; flex: 1; min-width: 400px; max-width: 600px;">
                                     <input type="text" id="users-search" placeholder="Cerca per nome, email, telefono..."
                                            oninput="onUnifiedUsersSearchInput()" onkeydown="onUnifiedUsersSearchKeydown(event)" autocomplete="off">
+                                    <button id="clear-users-search" onclick="clearUsersSearch()" style="display: none; position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 1.2rem; padding: 0.25rem;">&times;</button>
                                     <div id="users-search-dropdown" class="search-dropdown" style="display: none;"></div>
                                 </div>
                                 <div class="user-type-filters">
@@ -198,6 +199,21 @@
                             </div>
                         </div>
                     </div>
+
+                    <div class="section">
+                        <h3>Test Email</h3>
+                        <p style="color: var(--text-secondary); margin-bottom: 1rem;">Invia tutte le email di prova per verificare la configurazione SMTP</p>
+                        <div style="display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap;">
+                            <div class="form-group" style="flex: 1; min-width: 250px; margin-bottom: 0;">
+                                <label for="test-email-address">Indirizzo Email di Test</label>
+                                <input type="email" id="test-email-address" placeholder="email@esempio.com" class="form-input">
+                            </div>
+                            <button type="button" class="btn btn-primary" onclick="sendTestEmails()" id="send-test-emails-btn">
+                                Invia Email di Prova
+                            </button>
+                        </div>
+                        <div id="test-email-results" style="margin-top: 1rem;"></div>
+                    </div>
                 </div>
 
                 <!-- Bookings Page -->
@@ -224,8 +240,13 @@
                     <div class="section">
                         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">
                             <div style="display: flex; align-items: center; gap: 10px;">
+                                <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.9rem;" onclick="navigateDay(-1)" title="Giorno precedente">&lt;</button>
+                                <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.9rem;" onclick="navigateDay(1)" title="Giorno successivo">&gt;</button>
                                 <h3 style="margin: 0;">Prenotazioni del Giorno: <span id="selected-date-display">-</span></h3>
                                 <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;" onclick="refreshDailyBookings()">Aggiorna</button>
+                                <button class="btn btn-primary" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;" onclick="openPlayerBookingsSearch()">🔍 Cerca Prenotazioni</button>
+                                <button class="btn btn-secondary" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;" onclick="openFilterPlayerModal()" id="filter-player-btn">👤 Filtra Giocatore</button>
+                                <button class="btn btn-danger" style="padding: 0.25rem 0.5rem; font-size: 0.8rem; display: none;" onclick="clearPlayerFilter()" id="clear-filter-btn" title="Rimuovi filtro">✕</button>
                             </div>
                             <div class="sport-filters">
                                 <button class="sport-filter-btn active" data-sport="all" onclick="filterBySport(null)">Tutti</button>
@@ -244,29 +265,24 @@
                             <button class="btn btn-secondary" onclick="loadBookingStats()">Aggiorna</button>
                         </div>
                         <!-- Filtri Statistiche -->
-                        <div class="stats-filters" style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px;">
-                            <div style="display: flex; align-items: center; gap: 0.5rem;">
-                                <label style="color: #a0a0a0; font-size: 0.9rem;">Periodo:</label>
-                                <select id="stats-period-filter" onchange="onStatsFilterChange()" style="padding: 0.5rem; border-radius: 4px; background: #1a1a2e; color: #fff; border: 1px solid #333;">
-                                    <option value="year">Anno corrente</option>
-                                    <option value="month">Mese corrente</option>
-                                    <option value="week">Ultimi 7 giorni</option>
-                                    <option value="custom">Personalizzato</option>
-                                </select>
+                        <div class="stats-filters" style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px; align-items: center;">
+                            <div class="sport-filters stats-period-filters">
+                                <button class="sport-filter-btn active" data-period="month" onclick="filterStatsByPeriod('month')">Questo Mese</button>
+                                <button class="sport-filter-btn" data-period="3months" onclick="filterStatsByPeriod('3months')">Ultimi 3 Mesi</button>
+                                <button class="sport-filter-btn" data-period="6months" onclick="filterStatsByPeriod('6months')">Ultimi 6 Mesi</button>
+                                <button class="sport-filter-btn" data-period="year" onclick="filterStatsByPeriod('year')">Ultimo Anno</button>
+                                <button class="sport-filter-btn" data-period="custom" onclick="filterStatsByPeriod('custom')">Personalizzato</button>
                             </div>
                             <div id="stats-custom-dates" style="display: none; align-items: center; gap: 0.5rem;">
-                                <input type="date" id="stats-from-date" onchange="onStatsFilterChange()" style="padding: 0.5rem; border-radius: 4px; background: #1a1a2e; color: #fff; border: 1px solid #333;">
+                                <input type="date" id="stats-from-date" onchange="loadBookingStats()" style="padding: 0.5rem; border-radius: 4px; background: #1a1a2e; color: #fff; border: 1px solid #333;">
                                 <span style="color: #a0a0a0;">-</span>
-                                <input type="date" id="stats-to-date" onchange="onStatsFilterChange()" style="padding: 0.5rem; border-radius: 4px; background: #1a1a2e; color: #fff; border: 1px solid #333;">
+                                <input type="date" id="stats-to-date" onchange="loadBookingStats()" style="padding: 0.5rem; border-radius: 4px; background: #1a1a2e; color: #fff; border: 1px solid #333;">
                             </div>
-                            <div style="display: flex; align-items: center; gap: 0.5rem;">
-                                <label style="color: #a0a0a0; font-size: 0.9rem;">Sport:</label>
-                                <select id="stats-sport-filter" onchange="onStatsFilterChange()" style="padding: 0.5rem; border-radius: 4px; background: #1a1a2e; color: #fff; border: 1px solid #333;">
-                                    <option value="">Tutti</option>
-                                    <option value="padel">Padel</option>
-                                    <option value="tennis">Tennis</option>
-                                    <option value="calcetto">Calcetto</option>
-                                </select>
+                            <div class="sport-filters stats-sport-filters">
+                                <button class="sport-filter-btn active" data-sport="all" onclick="filterStatsBySport(null)">Tutti</button>
+                                <button class="sport-filter-btn" data-sport="padel" onclick="filterStatsBySport('padel')">Padel</button>
+                                <button class="sport-filter-btn" data-sport="tennis" onclick="filterStatsBySport('tennis')">Tennis</button>
+                                <button class="sport-filter-btn" data-sport="calcetto" onclick="filterStatsBySport('calcetto')">Calcetto</button>
                             </div>
                         </div>
                         <!-- Summary Cards -->
@@ -889,6 +905,68 @@
         </div>
     </div>
 
+    <!-- Player Bookings Search Modal -->
+    <div id="player-bookings-modal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 700px; max-height: 85vh; display: flex; flex-direction: column;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+                <h3 style="margin: 0;">Cerca Prenotazioni</h3>
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <div class="modal-sport-filters" style="display: flex; gap: 0.25rem;">
+                        <button class="sport-filter-btn small active" data-sport="all" onclick="filterModalBySport(null)">Tutti</button>
+                        <button class="sport-filter-btn small" data-sport="padel" onclick="filterModalBySport('padel')">Padel</button>
+                        <button class="sport-filter-btn small" data-sport="tennis" onclick="filterModalBySport('tennis')">Tennis</button>
+                        <button class="sport-filter-btn small" data-sport="calcetto" onclick="filterModalBySport('calcetto')">Calcetto</button>
+                    </div>
+                    <button type="button" class="btn btn-secondary" onclick="closePlayerBookingsModal()" style="padding: 0.25rem 0.75rem;">&times;</button>
+                </div>
+            </div>
+
+            <!-- Player Search Input -->
+            <div id="player-search-container" style="position: relative; margin-bottom: 1rem;">
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <input type="text" id="player-bookings-search-input"
+                           placeholder="Digita nome giocatore..."
+                           autocomplete="off"
+                           oninput="onPlayerBookingsSearchInput()"
+                           onkeydown="onPlayerBookingsSearchKeydown(event)"
+                           style="flex: 1; padding: 0.75rem 1rem; border-radius: 8px; background: var(--bg-dark); color: var(--text-primary); border: 1px solid var(--border-color); font-size: 1rem;">
+                    <button type="button" class="btn btn-warning" onclick="loadAllPendingBookings()" style="white-space: nowrap;">
+                        ⏳ In Attesa
+                    </button>
+                </div>
+                <div id="player-bookings-suggestions" class="player-suggestions-dropdown" style="display: none;"></div>
+            </div>
+
+            <!-- Selected Player Info -->
+            <div id="selected-player-info" style="display: none; padding: 0.75rem 1rem; background: rgba(0, 255, 245, 0.1); border-radius: 8px; margin-bottom: 1rem; justify-content: space-between; align-items: center;">
+                <span id="selected-player-name" style="font-weight: 600; color: var(--accent-primary);"></span>
+                <button type="button" onclick="clearSelectedPlayer()" style="background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 1.2rem;">&times;</button>
+            </div>
+
+            <!-- Bookings Results -->
+            <div id="player-bookings-results" style="flex: 1; overflow-y: auto; min-height: 200px;"></div>
+        </div>
+    </div>
+
+    <!-- Filter Player Modal -->
+    <div id="filter-player-modal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 450px; overflow: visible; min-height: 350px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="margin: 0;">Filtra Giocatore</h3>
+                <button type="button" class="btn btn-secondary" onclick="closeFilterPlayerModal()" style="padding: 0.25rem 0.75rem;">&times;</button>
+            </div>
+            <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.9rem;">Cerca un giocatore per visualizzare solo le sue prenotazioni nel calendario</p>
+            <div style="position: relative;">
+                <input type="text" id="filter-player-search-input"
+                       placeholder="Digita nome giocatore..."
+                       autocomplete="off"
+                       oninput="onFilterPlayerSearchInput()"
+                       onkeydown="onFilterPlayerSearchKeydown(event)"
+                       style="width: 100%; padding: 0.75rem 1rem; border-radius: 8px; background: var(--bg-dark); color: var(--text-primary); border: 1px solid var(--border-color); font-size: 1rem; box-sizing: border-box;">
+                <div id="filter-player-suggestions" class="player-suggestions-dropdown" style="display: none; max-height: 250px; overflow-y: auto;"></div>
+            </div>
+        </div>
+    </div>
 
     <!-- Login Modal -->
     <div id="login-modal" class="modal" style="display: none;">
