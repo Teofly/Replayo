@@ -4,6 +4,12 @@ const isLocal = window.location.hostname === 'localhost' ||
                 window.location.hostname.startsWith('192.168.');
 const API_BASE_URL = isLocal ? 'http://192.168.1.175:3000/api' : 'https://api.teofly.it/api';
 
+// Escape string for use in onclick attributes
+function escapeAttr(str) {
+    if (!str) return '';
+    return String(str).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
 // Auth credentials
 let authCredentials = localStorage.getItem('replayo_auth') || null;
 let loginResolve = null;
@@ -191,14 +197,22 @@ function navigateTo(page) {
 }
 
 // Esegui manualmente il cron video download
-async function runCronManually() {
-    if (!confirm('Eseguire il cron job video download ora?')) return;
+function runCronManually() {
+    showConfirmDialog(
+        'Cron Job',
+        'Eseguire il cron job video download ora?',
+        'Esegui',
+        executeRunCronManually
+    );
+}
 
+async function executeRunCronManually() {
     try {
-        const btn = event.target;
-        const originalText = btn.textContent;
-        btn.textContent = '⏳ Esecuzione...';
-        btn.disabled = true;
+        const btn = document.querySelector('[onclick="runCronManually()"]');
+        if (btn) {
+            btn.textContent = '⏳ Esecuzione...';
+            btn.disabled = true;
+        }
 
         const response = await apiFetch(`${API_BASE_URL}/cron/video-download`, {
             method: 'POST'
@@ -207,16 +221,18 @@ async function runCronManually() {
         const data = await response.json();
 
         if (data.success) {
-            alert('Cron job completato!\n\n' + data.output);
+            showNotification('Cron job completato!', 'success');
         } else {
-            alert('Errore: ' + (data.error || 'Sconosciuto'));
+            showNotification('Errore: ' + (data.error || 'Sconosciuto'), 'error');
         }
 
-        btn.textContent = originalText;
-        btn.disabled = false;
-        checkAPIStatus(); // Refresh status
+        if (btn) {
+            btn.textContent = '▶️ Esegui Cron';
+            btn.disabled = false;
+        }
+        checkAPIStatus();
     } catch (error) {
-        alert('Errore: ' + error.message);
+        showNotification('Errore: ' + error.message, 'error');
     }
 }
 
@@ -290,11 +306,16 @@ async function refreshNasStats() {
     }
 }
 
-async function cleanupOrphanedVideos() {
-    if (!confirm('Vuoi eliminare dal database i record dei video che non esistono più sul NAS?')) {
-        return;
-    }
+function cleanupOrphanedVideos() {
+    showConfirmDialog(
+        'Cleanup Video',
+        'Vuoi eliminare dal database i record dei video che non esistono più sul NAS?',
+        'Elimina',
+        executeCleanupOrphanedVideos
+    );
+}
 
+async function executeCleanupOrphanedVideos() {
     try {
         const response = await apiFetch(`${API_BASE_URL}/videos/cleanup`, {
             method: 'POST',
@@ -303,14 +324,14 @@ async function cleanupOrphanedVideos() {
         const data = await response.json();
 
         if (data.success) {
-            alert(`Cleanup completato!\n\nEliminati: ${data.deleted} record orfani\nMantenuti: ${data.kept} record validi`);
+            showNotification(`Cleanup completato! Eliminati: ${data.deleted}, Mantenuti: ${data.kept}`, 'success');
             refreshNasStats();
         } else {
-            alert('Errore: ' + data.message);
+            showNotification('Errore: ' + data.message, 'error');
         }
     } catch (error) {
         console.error('Error cleaning up videos:', error);
-        alert('Errore durante il cleanup');
+        showNotification('Errore durante il cleanup', 'error');
     }
 }
 
@@ -422,20 +443,28 @@ async function editCourt(courtId) {
     document.getElementById('court-modal').style.display = 'flex';
 }
 
-async function deleteCourt(courtId, courtName) {
-    if (!confirm(`Eliminare il campo "${courtName}"?`)) return;
+function deleteCourt(courtId, courtName) {
+    showConfirmDialog(
+        'Elimina Campo',
+        `Eliminare il campo "${courtName}"?`,
+        'Elimina',
+        () => executeDeleteCourt(courtId)
+    );
+}
 
+async function executeDeleteCourt(courtId) {
     try {
         const response = await apiFetch(`${API_BASE_URL}/courts/${courtId}`, {
             method: 'DELETE'
         });
         if (response.ok) {
             await loadCourts();
-        loadCalendarCoverage();
+            loadCalendarCoverage();
             renderCourtsList();
+            showNotification('Campo eliminato', 'success');
         }
     } catch (error) {
-        alert('Errore eliminazione campo: ' + error.message);
+        showNotification('Errore eliminazione campo: ' + error.message, 'error');
     }
 }
 
@@ -496,18 +525,26 @@ async function editPlayer(playerId) {
     document.getElementById('player-modal').style.display = 'flex';
 }
 
-async function deletePlayer(playerId, playerName) {
-    if (!confirm(`Eliminare "${playerName}" dall'anagrafica?`)) return;
+function deletePlayer(playerId, playerName) {
+    showConfirmDialog(
+        'Elimina Giocatore',
+        `Eliminare "${playerName}" dall'anagrafica?`,
+        'Elimina',
+        () => executeDeletePlayer(playerId)
+    );
+}
 
+async function executeDeletePlayer(playerId) {
     try {
         const response = await apiFetch(`${API_BASE_URL}/players/${playerId}`, {
             method: 'DELETE'
         });
         if (response.ok) {
             loadPlayers();
+            showNotification('Giocatore eliminato', 'success');
         }
     } catch (error) {
-        alert('Errore eliminazione giocatore: ' + error.message);
+        showNotification('Errore eliminazione giocatore: ' + error.message, 'error');
     }
 }
 
@@ -1059,7 +1096,7 @@ async function confirmBooking() {
             throw new Error(data.error || 'Errore conferma');
         }
     } catch (error) {
-        alert('Errore: ' + error.message);
+        showNotification('Errore: ' + error.message, 'error');
     }
 }
 
@@ -1113,12 +1150,12 @@ async function sendBookingEmail() {
         const data = await response.json();
 
         if (data.success) {
-            alert(`Email inviate a ${data.recipients.length} partecipanti:\n${data.recipients.join('\n')}`);
+            showNotification(`Email inviate a ${data.recipients.length} partecipanti`, 'success');
         } else {
             throw new Error(data.error || 'Errore invio email');
         }
     } catch (error) {
-        alert('Errore: ' + error.message);
+        showNotification('Errore: ' + error.message, 'error');
     } finally {
         sendBtn.textContent = originalText;
         sendBtn.disabled = false;
@@ -1725,7 +1762,7 @@ async function handleBookingSubmit(e) {
     const time = document.getElementById('booking-time').value;
 
     if (!courtId || !date || !time) {
-        alert('Seleziona campo, data e orario');
+        showNotification('Seleziona campo, data e orario', 'error');
         return;
     }
 
@@ -1786,7 +1823,7 @@ delete document.getElementById('booking-form').dataset.editingId;        documen
             throw new Error(data.message || data.error || 'Errore salvataggio prenotazione');
         }
     } catch (error) {
-        alert('Errore: ' + error.message);
+        showNotification('Errore: ' + error.message, 'error');
     }
 }
 
@@ -1826,7 +1863,7 @@ async function handleCourtSubmit(e) {
             throw new Error(data.message || data.error || 'Errore salvataggio');
         }
     } catch (error) {
-        alert('Errore: ' + error.message);
+        showNotification('Errore: ' + error.message, 'error');
     }
 }
 
@@ -1861,7 +1898,7 @@ async function handlePlayerSubmit(e) {
             throw new Error(data.message || data.error || 'Errore salvataggio');
         }
     } catch (error) {
-        alert('Errore: ' + error.message);
+        showNotification('Errore: ' + error.message, 'error');
     }
 }
 
@@ -1923,11 +1960,16 @@ async function showMatchVideos(partitaId, partitaTitle) {
     }
 }
 
-async function deleteVideo(videoId, videoTitle, partitaId, partitaTitle) {
-    if (!confirm(`Sei sicuro di voler eliminare il video "${videoTitle}"?\n\nQuesta azione eliminerà il video sia dal database che dal NAS.`)) {
-        return;
-    }
+function deleteVideo(videoId, videoTitle, partitaId, partitaTitle) {
+    showConfirmDialog(
+        'Elimina Video',
+        `Sei sicuro di voler eliminare il video "${videoTitle}"?\n\nQuesta azione eliminerà il video sia dal database che dal NAS.`,
+        'Elimina',
+        () => executeDeleteVideo(videoId, partitaId, partitaTitle)
+    );
+}
 
+async function executeDeleteVideo(videoId, partitaId, partitaTitle) {
     try {
         const response = await apiFetch(`${API_BASE_URL}/videos/${videoId}`, {
             method: 'DELETE'
@@ -1936,15 +1978,15 @@ async function deleteVideo(videoId, videoTitle, partitaId, partitaTitle) {
         const result = await response.json();
 
         if (result.success) {
-            alert('✅ Video eliminato con successo');
+            showNotification('Video eliminato con successo', 'success');
             // Ricarica la lista dei video
             showMatchVideos(partitaId, partitaTitle);
         } else {
-            alert(`❌ Errore: ${result.error || 'Eliminazione fallita'}`);
+            showNotification(`Errore: ${result.error || 'Eliminazione fallita'}`, 'error');
         }
     } catch (error) {
         console.error('Delete video error:', error);
-        alert(`❌ Errore durante l'eliminazione: ${error.message}`);
+        showNotification(`Errore durante l'eliminazione: ${error.message}`, 'error');
     }
 }
 
@@ -2052,7 +2094,7 @@ async function handleAssociateNasVideo(e) {
     const duration = parseInt(document.getElementById('nas-video-duration').value);
 
     if (!currentVideoMatchId) {
-        alert('❌ Errore: nessun match selezionato');
+        showNotification('Errore: nessun match selezionato', 'error');
         return;
     }
 
@@ -2071,16 +2113,16 @@ async function handleAssociateNasVideo(e) {
         const result = await response.json();
 
         if (result.success) {
-            alert('✅ Video associato con successo');
+            showNotification('Video associato con successo', 'success');
             closeAssociateNasVideoModal();
             // Ricarica la lista dei video
             showMatchVideos(currentVideoMatchId, currentVideoMatchTitle);
         } else {
-            alert(`❌ Errore: ${result.error || 'Associazione fallita'}`);
+            showNotification(`Errore: ${result.error || 'Associazione fallita'}`, 'error');
         }
     } catch (error) {
         console.error('Associate NAS video error:', error);
-        alert(`❌ Errore durante l'associazione: ${error.message}`);
+        showNotification(`Errore durante l'associazione: ${error.message}`, 'error');
     }
 }
 
@@ -2419,7 +2461,7 @@ function downloadQRCode() {
         })
         .catch(err => {
             console.error('Error downloading QR:', err);
-            alert('Errore nel download del QR code');
+            showNotification('Errore nel download del QR code', 'error');
         });
 }
 
@@ -2444,7 +2486,7 @@ async function editMatch(partitaId) {
             document.getElementById('edit-modal').style.display = 'flex';
         }
     } catch (error) {
-        alert('Error loading partita: ' + error.message);
+        showNotification('Error loading partita: ' + error.message, 'error');
     }
 }
 
@@ -2495,18 +2537,26 @@ async function handleEditMatch(e) {
     }
 }
 
-async function deleteMatch(partitaId, bookingCode) {
-    if (!confirm(`Delete partita "${bookingCode}"? This will also delete all videos!`)) return;
+function deleteMatch(partitaId, bookingCode) {
+    showConfirmDialog(
+        'Elimina Partita',
+        `Eliminare la partita "${bookingCode}"? Verranno eliminati anche tutti i video associati!`,
+        'Elimina',
+        () => executeDeleteMatch(partitaId)
+    );
+}
 
+async function executeDeleteMatch(partitaId) {
     try {
         const response = await apiFetch(`${API_BASE_URL}/matches/${partitaId}`, { method: 'DELETE' });
         const data = await response.json();
 
         if (response.ok && data.success) {
+            showNotification('Partita eliminata con successo', 'success');
             refreshMatchSearch();
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showNotification('Errore: ' + error.message, 'error');
     }
 }
 
@@ -2563,7 +2613,7 @@ document.getElementById('upload-video-form-modal')?.addEventListener('submit', a
     const title = document.getElementById('video-title').value;
     
     if (!fileInput.files[0]) {
-        alert('Seleziona un file video');
+        showNotification('Seleziona un file video', 'error');
         return;
     }
     
@@ -2593,13 +2643,14 @@ document.getElementById('upload-video-form-modal')?.addEventListener('submit', a
         if (xhr.status === 200 || xhr.status === 201) {
             closeUploadModal();
             refreshMatchSearch();
+            showNotification('Video caricato con successo', 'success');
         } else {
-            alert('Errore upload: ' + xhr.responseText);
+            showNotification('Errore upload: ' + xhr.responseText, 'error');
         }
     };
 
     xhr.onerror = function() {
-        alert('Errore di connessione');
+        showNotification('Errore di connessione', 'error');
     };
 
     xhr.send(formData);
@@ -2614,7 +2665,7 @@ document.getElementById('direct-upload-form')?.addEventListener('submit', async 
     const fileInput = document.getElementById('direct-video-file');
     
     if (!fileInput.files[0]) {
-        alert('Seleziona un file video');
+        showNotification('Seleziona un file video', 'error');
         return;
     }
     
@@ -3042,6 +3093,7 @@ async function quickConfirmBooking(bookingId) {
         });
 
         if (response.ok) {
+            showNotification('Prenotazione confermata', 'success');
             // Reload player bookings to update the list
             if (selectedPlayerForBookings) {
                 await loadPlayerBookings(selectedPlayerForBookings);
@@ -3049,11 +3101,11 @@ async function quickConfirmBooking(bookingId) {
             // Also refresh the calendar coverage
             loadCalendarCoverage();
         } else {
-            alert('Errore nella conferma della prenotazione');
+            showNotification('Errore nella conferma della prenotazione', 'error');
         }
     } catch (error) {
         console.error('Error confirming booking:', error);
-        alert('Errore nella conferma della prenotazione');
+        showNotification('Errore nella conferma della prenotazione', 'error');
     }
 }
 
@@ -3182,16 +3234,17 @@ async function quickConfirmBookingFromPending(bookingId) {
         });
 
         if (response.ok) {
+            showNotification('Prenotazione confermata', 'success');
             // Reload pending bookings list
             await loadAllPendingBookings();
             // Also refresh the calendar coverage
             loadCalendarCoverage();
         } else {
-            alert('Errore nella conferma della prenotazione');
+            showNotification('Errore nella conferma della prenotazione', 'error');
         }
     } catch (error) {
         console.error('Error confirming booking:', error);
-        alert('Errore nella conferma della prenotazione');
+        showNotification('Errore nella conferma della prenotazione', 'error');
     }
 }
 
@@ -3846,14 +3899,14 @@ async function listCameras() {
     const pass = document.getElementById('test-synology-pass').value;
 
     if (!host || !port || !user || !pass) {
-        alert('Compila prima la configurazione Synology!');
+        showNotification('Compila prima la configurazione Synology!', 'error');
         return;
     }
 
     const resultsDiv = document.getElementById('test-results');
     const outputDiv = document.getElementById('test-output');
 
-    outputDiv.innerHTML = '<p>🔄 Caricamento telecamere...</p>';
+    outputDiv.innerHTML = '<p>Caricamento telecamere...</p>';
     resultsDiv.style.display = 'block';
 
     try {
@@ -3872,7 +3925,7 @@ async function listCameras() {
             data.cameras.forEach((cam) => {
                 html += `
                     <div style="padding: 1rem; background: rgba(0,0,0,0.3); border-radius: 8px; margin-bottom: 0.5rem; cursor: pointer;"
-                         onclick="document.getElementById('test-camera-id').value = ${cam.id}; alert('Camera ID ${cam.id} selezionata!')">
+                         onclick="document.getElementById('test-camera-id').value = ${cam.id}; showNotification('Camera ID ${cam.id} selezionata!', 'success')">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <div>
                                 <strong style="color: var(--accent-primary);">ID: ${cam.id}</strong>
@@ -3913,14 +3966,14 @@ async function listAvailableRecordings() {
     const cameraId = document.getElementById('test-camera-id').value;
 
     if (!host || !port || !user || !pass || !cameraId) {
-        alert('Compila prima la configurazione Synology!');
+        showNotification('Compila prima la configurazione Synology!', 'error');
         return;
     }
 
     const listDiv = document.getElementById('recordings-list');
     const outputDiv = document.getElementById('recordings-output');
 
-    outputDiv.innerHTML = '<p>🔄 Caricamento registrazioni in corso...</p>';
+    outputDiv.innerHTML = '<p>Caricamento registrazioni in corso...</p>';
     listDiv.style.display = 'block';
 
     try {
@@ -4033,12 +4086,12 @@ async function downloadRecording() {
     const compressVideo = document.getElementById('compress-video').checked;
 
     if (!matchId) {
-        alert('Seleziona un match!');
+        showNotification('Seleziona un match!', 'error');
         return;
     }
 
     if (!selectedRecording) {
-        alert('Seleziona prima una registrazione dalla lista!');
+        showNotification('Seleziona prima una registrazione dalla lista!', 'error');
         return;
     }
 
@@ -4249,14 +4302,14 @@ async function saveCameraAssociation(courtId) {
 
         const data = await response.json();
         if (data.success) {
-            alert('Associazione salvata!');
+            showNotification('Associazione salvata!', 'success');
             loadCameraCourtAssociations(); // Ricarica per aggiornare UI
         } else {
-            alert('Errore: ' + (data.error || 'Sconosciuto'));
+            showNotification('Errore: ' + (data.error || 'Sconosciuto'), 'error');
         }
     } catch (error) {
         console.error('Error saving association:', error);
-        alert('Errore: ' + error.message);
+        showNotification('Errore: ' + error.message, 'error');
     }
 }
 
@@ -4281,7 +4334,7 @@ async function previewAutoDownload() {
 
     const date = dateInput.value;
     if (!date) {
-        alert('Seleziona una data');
+        showNotification('Seleziona una data', 'error');
         return;
     }
 
@@ -4367,28 +4420,33 @@ async function downloadSingleVideo(bookingId, button) {
             button.textContent = 'Riprova';
             button.style.background = 'var(--danger)';
         }
-        alert('Errore download: ' + error.message);
+        showNotification('Errore download: ' + error.message, 'error');
     }
 }
 
-async function startAutoDownload() {
+function startAutoDownload() {
     const dateInput = document.getElementById('auto-download-date');
-    const courtSelect = document.getElementById('auto-download-court');
     const progressDiv = document.getElementById('auto-download-progress');
 
     if (!dateInput || !progressDiv) return;
 
     const date = dateInput.value;
     if (!date) {
-        alert('Seleziona una data');
+        showNotification('Seleziona una data', 'error');
         return;
     }
 
     // Conferma
-    if (!confirm('Vuoi avviare il download automatico dei video per tutte le prenotazioni senza video?')) {
-        return;
-    }
+    showConfirmDialog(
+        'Download Automatico',
+        'Vuoi avviare il download automatico dei video per tutte le prenotazioni senza video?',
+        'Avvia',
+        () => executeStartAutoDownload(date, progressDiv)
+    );
+}
 
+async function executeStartAutoDownload(date, progressDiv) {
+    const courtSelect = document.getElementById('auto-download-court');
     progressDiv.style.display = 'block';
     progressDiv.innerHTML = '<p style="color: var(--accent-primary);">Recupero prenotazioni...</p>';
 
@@ -4587,7 +4645,7 @@ async function uploadClubImages(input) {
     const validFiles = files.filter(f => f.size <= 10 * 1024 * 1024);
 
     if (validFiles.length === 0) {
-        alert('Nessuna immagine valida da caricare!\n\n' + errors.join('\n'));
+        showNotification('Nessuna immagine valida da caricare! ' + errors.join(', '), 'error');
         input.value = '';
         return;
     }
@@ -4639,33 +4697,41 @@ async function uploadClubImages(input) {
     }
 
     // Show result
-    let message = `Caricamento completato: ${successCount} successi`;
     if (errorCount > 0) {
-        message += `, ${errorCount} errori\n\n${errors.join('\n')}`;
+        showNotification(`Caricamento: ${successCount} successi, ${errorCount} errori`, 'warning');
+    } else {
+        showNotification(`${successCount} immagini caricate con successo`, 'success');
     }
-    alert(message);
 
     loadClubImages();
     input.value = '';
 }
 
-async function deleteClubImage(filename) {
-    if (!confirm(`Eliminare l'immagine ${filename}?`)) return;
-    
+function deleteClubImage(filename) {
+    showConfirmDialog(
+        'Elimina Immagine',
+        `Eliminare l'immagine ${filename}?`,
+        'Elimina',
+        () => executeDeleteClubImage(filename)
+    );
+}
+
+async function executeDeleteClubImage(filename) {
     try {
         const response = await apiFetch(`${API_BASE_URL}/club/images/${filename}`, {
             method: 'DELETE'
         });
-        
+
         const data = await response.json();
-        
+
         if (!data.success) throw new Error(data.error);
-        
+
+        showNotification('Immagine eliminata', 'success');
         loadClubImages();
-        
+
     } catch (error) {
         console.error('Error deleting club image:', error);
-        alert('Errore eliminazione: ' + error.message);
+        showNotification('Errore eliminazione: ' + error.message, 'error');
     }
 }
 
@@ -4772,11 +4838,11 @@ function renderUnifiedUsersList() {
 
         const userCode = user.userCode ? `<span class="user-code-badge">${user.userCode}</span>` : '';
 
-        // Bottone toggle admin (per tutti i contatti) - larghezza fissa per uniformare
-        const adminToggleBtn = `<button class="btn ${user.isAdmin ? 'btn-warning' : 'btn-secondary'} btn-small btn-admin-toggle" onclick="toggleUserAdmin('${user.playerId || ''}', '${user.userId || ''}', ${user.isAdmin}, '${user.email || ''}')">${user.isAdmin ? 'Rimuovi Admin' : 'Rendi Admin'}</button>`;
+        // Bottone toggle admin (solo per utenti registrati con userId)
+        const adminToggleBtn = user.userId ? `<button class="btn ${user.isAdmin ? 'btn-warning' : 'btn-secondary'} btn-small btn-admin-toggle" onclick="toggleUserAdmin('${escapeAttr(user.playerId)}', '${escapeAttr(user.userId)}', ${user.isAdmin}, '${escapeAttr(user.email)}')">${user.isAdmin ? 'Rimuovi Admin' : 'Rendi Admin'}</button>` : '';
 
         return `
-            <div class="user-card ${user.isAdmin ? 'is-admin' : ''}" data-id="${user.id}" data-player-id="${user.playerId || ''}" data-user-id="${user.userId || ''}">
+            <div class="user-card ${user.isAdmin ? 'is-admin' : ''}" data-id="${user.id}" data-player-id="${escapeAttr(user.playerId)}" data-user-id="${escapeAttr(user.userId)}">
                 <div class="user-avatar">${initials}</div>
                 <div class="user-info">
                     <div class="user-name-row">
@@ -4792,10 +4858,10 @@ function renderUnifiedUsersList() {
                     ${user.notes ? `<p class="user-notes">${user.notes}</p>` : ''}
                 </div>
                 <div class="user-actions">
-                    <button class="btn btn-primary btn-small" onclick="editUnifiedUser('${user.playerId || ''}', '${user.userId || ''}')">Modifica</button>
+                    <button class="btn btn-primary btn-small" onclick="editUnifiedUser('${escapeAttr(user.playerId)}', '${escapeAttr(user.userId)}')">Modifica</button>
                     ${adminToggleBtn}
-                    ${user.isRegistered && !user.emailVerified ? `<button class="btn btn-success btn-small" onclick="verifyUserManually('${user.userId}')">Verifica</button>` : ''}
-                    <button class="btn btn-danger btn-small" onclick="deleteUnifiedUser('${user.playerId || ''}', '${user.userId || ''}', '${user.name}')">Elimina</button>
+                    ${user.isRegistered && !user.emailVerified ? `<button class="btn btn-success btn-small" onclick="verifyUserManually('${escapeAttr(user.userId)}')">Verifica</button>` : ''}
+                    <button class="btn btn-danger btn-small" onclick="deleteUnifiedUser('${escapeAttr(user.playerId)}', '${escapeAttr(user.userId)}', '${escapeAttr(user.name)}')">Elimina</button>
                 </div>
             </div>
         `;
@@ -5000,7 +5066,7 @@ async function editUnifiedUser(playerId, userId) {
     );
 
     if (!user) {
-        alert('Utente non trovato');
+        showNotification('Utente non trovato', 'error');
         return;
     }
 
@@ -5039,7 +5105,7 @@ async function saveUnifiedUser(event) {
     const notes = document.getElementById('user-notes').value.trim();
 
     if (!firstName) {
-        alert('Il nome è obbligatorio');
+        showNotification('Il nome è obbligatorio', 'error');
         return;
     }
 
@@ -5082,11 +5148,12 @@ async function saveUnifiedUser(event) {
             document.getElementById('user-modal').style.display = 'none';
             loadUnifiedUsers();
             loadUnifiedUsersStats();
+            showNotification('Utente salvato con successo', 'success');
         } else {
-            alert('Errore: ' + (data.error || 'Operazione fallita'));
+            showNotification('Errore: ' + (data.error || 'Operazione fallita'), 'error');
         }
     } catch (error) {
-        alert('Errore: ' + error.message);
+        showNotification('Errore: ' + error.message, 'error');
     }
 }
 
@@ -5139,18 +5206,25 @@ async function executeDeleteUnifiedUser(playerId, userId, name) {
 }
 
 // Send password reset email to user
-async function sendPasswordResetEmail() {
+function sendPasswordResetEmail() {
     const resetBtn = document.getElementById('reset-password-btn');
     const userId = resetBtn.dataset.userId;
     const userEmail = resetBtn.dataset.userEmail;
 
     if (!userId || !userEmail) {
-        alert('Utente non valido per il reset password');
+        showNotification('Utente non valido per il reset password', 'error');
         return;
     }
 
-    if (!confirm(`Inviare email di reset password a ${userEmail}?`)) return;
+    showConfirmDialog(
+        'Reset Password',
+        `Inviare email di reset password a ${userEmail}?`,
+        'Invia',
+        () => executeSendPasswordResetEmail(userId, resetBtn)
+    );
+}
 
+async function executeSendPasswordResetEmail(userId, resetBtn) {
     try {
         resetBtn.disabled = true;
         resetBtn.textContent = 'Invio...';
@@ -5162,22 +5236,29 @@ async function sendPasswordResetEmail() {
         const data = await response.json();
 
         if (data.success) {
-            alert('Email di reset password inviata con successo!');
+            showNotification('Email di reset password inviata con successo!', 'success');
         } else {
-            alert('Errore: ' + (data.error || 'Invio fallito'));
+            showNotification('Errore: ' + (data.error || 'Invio fallito'), 'error');
         }
     } catch (error) {
-        alert('Errore: ' + error.message);
+        showNotification('Errore: ' + error.message, 'error');
     } finally {
         resetBtn.disabled = false;
-        resetBtn.textContent = '🔑 Reset Password';
+        resetBtn.textContent = 'Reset Password';
     }
 }
 
 // Verify user manually (for registered users)
-async function verifyUserManually(userId) {
-    if (!confirm('Verificare manualmente questo utente?')) return;
+function verifyUserManually(userId) {
+    showConfirmDialog(
+        'Verifica Utente',
+        'Verificare manualmente questo utente?',
+        'Verifica',
+        () => executeVerifyUserManually(userId)
+    );
+}
 
+async function executeVerifyUserManually(userId) {
     try {
         const response = await apiFetch(`${API_BASE_URL}/admin/users/${userId}/verify-email`, {
             method: 'POST'
@@ -5185,34 +5266,38 @@ async function verifyUserManually(userId) {
         const data = await response.json();
 
         if (data.success) {
-            alert('Utente verificato!');
+            showNotification('Utente verificato!', 'success');
             loadUnifiedUsers();
             loadUnifiedUsersStats();
         } else {
-            alert('Errore: ' + (data.error || 'Verifica fallita'));
+            showNotification('Errore: ' + (data.error || 'Verifica fallita'), 'error');
         }
     } catch (error) {
-        alert('Errore: ' + error.message);
+        showNotification('Errore: ' + error.message, 'error');
     }
 }
 
 // Toggle admin status for any user (registered or player-only)
 async function toggleUserAdmin(playerId, userId, currentAdmin, email) {
     try {
-        const response = await apiFetch(`${API_BASE_URL}/admin/toggle-admin`, {
+        if (!userId) {
+            showNotification('Errore: Utente non registrato, impossibile modificare stato admin', 'error');
+            return;
+        }
+        const response = await apiFetch(`${API_BASE_URL}/admin/users/${userId}/toggle-admin`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ playerId, userId, email })
+            headers: { 'Content-Type': 'application/json' }
         });
         const data = await response.json();
 
         if (data.success) {
             loadUnifiedUsers();
+            showNotification('Stato admin aggiornato', 'success');
         } else {
-            alert('Errore: ' + (data.error || 'Operazione fallita'));
+            showNotification('Errore: ' + (data.error || 'Operazione fallita'), 'error');
         }
     } catch (error) {
-        alert('Errore: ' + error.message);
+        showNotification('Errore: ' + error.message, 'error');
     }
 }
 
@@ -5521,8 +5606,9 @@ function showConfirmDialog(title, message, buttonText, callback) {
     document.getElementById('confirm-dialog-yes').textContent = buttonText || 'Conferma';
     confirmDialogCallback = callback;
     document.getElementById('confirm-dialog-yes').onclick = () => {
+        const cb = confirmDialogCallback;
         closeConfirmDialog();
-        if (confirmDialogCallback) confirmDialogCallback();
+        if (cb) cb();
     };
     document.getElementById('confirm-dialog-modal').style.display = 'flex';
 }
