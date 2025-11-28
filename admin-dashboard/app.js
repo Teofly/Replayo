@@ -6983,6 +6983,8 @@ async function openDeviceModal(deviceId) {
     document.getElementById('device-firmware').value = device.firmware_version || '-';
     document.getElementById('device-ip').value = device.ip_address || '-';
     document.getElementById('device-wifi').value = device.wifi_ssid || '-';
+    document.getElementById('device-margin-before').value = device.margin_before || 5;
+    document.getElementById('device-margin-after').value = device.margin_after || 10;
 
     // Load courts for dropdown
     const courtSelect = document.getElementById('device-court');
@@ -7015,6 +7017,8 @@ async function saveDevice(e) {
     const deviceId = document.getElementById('device-id').value;
     const deviceName = document.getElementById('device-name').value;
     const courtId = document.getElementById('device-court').value || null;
+    const marginBefore = parseInt(document.getElementById('device-margin-before').value) || 5;
+    const marginAfter = parseInt(document.getElementById('device-margin-after').value) || 10;
 
     try {
         const response = await apiFetch(`${API_BASE_URL}/devices/${deviceId}`, {
@@ -7022,7 +7026,9 @@ async function saveDevice(e) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 device_name: deviceName,
-                court_id: courtId
+                court_id: courtId,
+                margin_before: marginBefore,
+                margin_after: marginAfter
             })
         });
 

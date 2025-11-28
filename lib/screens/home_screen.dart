@@ -356,7 +356,7 @@ class _HomeScreenState extends State<HomeScreen> {
       onTap: onTap,
       child: GlassmorphicContainer(
         width: double.infinity,
-        height: 140,
+        height: 150,
         borderRadius: 20,
         blur: 20,
         alignment: Alignment.center,

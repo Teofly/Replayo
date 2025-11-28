@@ -29,12 +29,24 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
   int _bookingCancelHours = 24; // default, loaded from API
   bool _isCancelling = false;
 
+  // Stats from API
+  Map<String, dynamic>? _apiStats;
+  bool _isLoadingStats = false;
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(_onTabChanged);
     _loadPublicConfig();
     _loadBookings();
+  }
+
+  void _onTabChanged() {
+    // Load stats when switching to Stats tab (index 2)
+    if (_tabController.index == 2 && _apiStats == null && !_isLoadingStats) {
+      _loadStats();
+    }
   }
 
   Future<void> _loadPublicConfig() async {
@@ -56,8 +68,79 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
     }
   }
 
+  Future<void> _loadStats() async {
+    if (_isLoadingStats) return;
+
+    setState(() => _isLoadingStats = true);
+
+    try {
+      final token = _authService.accessToken;
+      if (token == null) {
+        setState(() => _isLoadingStats = false);
+        return;
+      }
+
+      final response = await http.get(
+        Uri.parse('https://api.teofly.it/api/user/stats'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['stats'] != null) {
+          setState(() {
+            _apiStats = Map<String, dynamic>.from(data['stats']);
+            _isLoadingStats = false;
+          });
+          debugPrint('[MyBookingsScreen] Stats loaded from API');
+          return;
+        }
+      } else if (response.statusCode == 401) {
+        // Try refresh token
+        final refreshed = await _authService.refreshAccessToken();
+        if (refreshed) {
+          final newToken = _authService.accessToken;
+          final retryResponse = await http.get(
+            Uri.parse('https://api.teofly.it/api/user/stats'),
+            headers: {
+              'Authorization': 'Bearer $newToken',
+              'Content-Type': 'application/json',
+            },
+          ).timeout(const Duration(seconds: 10));
+
+          if (retryResponse.statusCode == 200) {
+            final retryData = jsonDecode(retryResponse.body);
+            if (retryData['success'] == true && retryData['stats'] != null) {
+              setState(() {
+                _apiStats = Map<String, dynamic>.from(retryData['stats']);
+                _isLoadingStats = false;
+              });
+              return;
+            }
+          }
+        }
+      }
+
+      // Fallback to null - will use local calculation
+      setState(() {
+        _apiStats = null;
+        _isLoadingStats = false;
+      });
+    } catch (e) {
+      debugPrint('[MyBookingsScreen] Error loading stats: $e');
+      setState(() {
+        _apiStats = null;
+        _isLoadingStats = false;
+      });
+    }
+  }
+
   @override
   void dispose() {
+    _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     super.dispose();
   }
@@ -436,23 +519,24 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
           tabs: [
             Tab(
               child: Row(
+                mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.upcoming, size: 20),
-                  const SizedBox(width: 8),
+                  const Icon(Icons.upcoming, size: 18),
+                  const SizedBox(width: 4),
                   const Text('Prossime'),
                   if (_upcomingBookings.isNotEmpty) ...[
-                    const SizedBox(width: 6),
+                    const SizedBox(width: 4),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                       decoration: BoxDecoration(
                         color: AppTheme.neonBlue,
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
                         '${_upcomingBookings.length}',
                         style: GoogleFonts.rajdhani(
-                          fontSize: 12,
+                          fontSize: 11,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
                         ),
@@ -464,23 +548,24 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
             ),
             Tab(
               child: Row(
+                mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.history, size: 20),
-                  const SizedBox(width: 8),
+                  const Icon(Icons.history, size: 18),
+                  const SizedBox(width: 4),
                   const Text('Passate'),
                   if (_pastBookings.isNotEmpty) ...[
-                    const SizedBox(width: 6),
+                    const SizedBox(width: 4),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                       decoration: BoxDecoration(
                         color: Colors.white24,
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
                         '${_pastBookings.length}',
                         style: GoogleFonts.rajdhani(
-                          fontSize: 12,
+                          fontSize: 11,
                           fontWeight: FontWeight.bold,
                           color: Colors.white70,
                         ),
@@ -492,10 +577,11 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
             ),
             const Tab(
               child: Row(
+                mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.bar_chart, size: 20),
-                  SizedBox(width: 8),
+                  Icon(Icons.bar_chart, size: 18),
+                  SizedBox(width: 4),
                   Text('Stats'),
                 ],
               ),
@@ -1049,11 +1135,57 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
     return days[weekday];
   }
 
-  Widget _buildStatisticsTab() {
-    final stats = _calculateStats();
-    final sportStats = stats['sportStats'] as Map<String, Map<String, dynamic>>;
+  // Helper to safely convert dynamic to double
+  double _toDouble(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? 0.0;
+    return 0.0;
+  }
 
-    if (_pastBookings.isEmpty && _upcomingBookings.isEmpty) {
+  Widget _buildStatisticsTab() {
+    // Use API stats if available, otherwise fallback to local calculation
+    final stats = _apiStats ?? _calculateStats();
+
+    // Handle both API format and local format for sportStats
+    Map<String, Map<String, dynamic>> sportStats = {};
+    if (stats['sportStats'] != null) {
+      final rawSportStats = stats['sportStats'];
+      if (rawSportStats is Map) {
+        rawSportStats.forEach((key, value) {
+          if (value is Map) {
+            sportStats[key.toString()] = Map<String, dynamic>.from(value);
+          }
+        });
+      }
+    }
+
+    // Show loading indicator while fetching stats
+    if (_isLoadingStats) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(color: AppTheme.neonBlue),
+            const SizedBox(height: 16),
+            Text(
+              'Caricamento statistiche...',
+              style: GoogleFonts.rajdhani(
+                fontSize: 16,
+                color: Colors.white60,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Check for empty stats
+    final totalMatches = stats['totalMatches'] ?? 0;
+    final upcomingCount = stats['upcomingCount'] ?? _upcomingBookings.length;
+
+    if (totalMatches == 0 && upcomingCount == 0 && _pastBookings.isEmpty && _upcomingBookings.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1112,14 +1244,14 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
                     Expanded(child: _buildStatCard(
                       icon: Icons.sports_score,
                       label: 'Partite Giocate',
-                      value: '${stats['totalMatches']}',
+                      value: '${stats['totalMatches'] ?? 0}',
                       color: AppTheme.neonGreen,
                     )),
                     const SizedBox(width: 12),
                     Expanded(child: _buildStatCard(
                       icon: Icons.timer,
                       label: 'Ore Giocate',
-                      value: '${(stats['totalHours'] as double).toStringAsFixed(1)}h',
+                      value: '${_toDouble(stats['totalHours']).toStringAsFixed(1)}h',
                       color: AppTheme.neonBlue,
                     )),
                   ],
@@ -1130,14 +1262,14 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
                     Expanded(child: _buildStatCard(
                       icon: Icons.euro,
                       label: 'Spesa Totale',
-                      value: '€${(stats['totalSpent'] as double).toStringAsFixed(0)}',
+                      value: '€${_toDouble(stats['totalSpent']).toStringAsFixed(0)}',
                       color: AppTheme.neonPink,
                     )),
                     const SizedBox(width: 12),
                     Expanded(child: _buildStatCard(
                       icon: Icons.event,
                       label: 'Prossime',
-                      value: '${stats['upcomingCount']}',
+                      value: '${stats['upcomingCount'] ?? _upcomingBookings.length}',
                       color: AppTheme.neonPurple,
                     )),
                   ],
@@ -1164,7 +1296,13 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
             ...sportStats.entries.map((entry) {
               final sport = entry.key;
               final data = entry.value;
-              final courts = data['courts'] as Map<String, int>;
+              // Handle courts map from both API and local format
+              Map<String, int> courts = {};
+              if (data['courts'] != null && data['courts'] is Map) {
+                (data['courts'] as Map).forEach((k, v) {
+                  courts[k.toString()] = (v is int) ? v : int.tryParse(v.toString()) ?? 0;
+                });
+              }
               String? favoriteCourt;
               int maxCourt = 0;
               courts.forEach((court, count) {
@@ -1211,7 +1349,7 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '${data['matches']} partite · ${(data['hours'] as double).toStringAsFixed(1)}h',
+                            '${data['matches'] ?? 0} partite · ${_toDouble(data['hours']).toStringAsFixed(1)}h',
                             style: GoogleFonts.roboto(
                               fontSize: 14,
                               color: Colors.white70,

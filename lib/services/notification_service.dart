@@ -285,6 +285,31 @@ class NotificationService {
     }
   }
 
+  /// Delete notification permanently from backend
+  Future<bool> deleteNotification(int notificationId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('accessToken');
+      if (token == null) return false;
+
+      final response = await http.delete(
+        Uri.parse('$_baseUrl/api/notifications/$notificationId'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      // Also cancel any local scheduled notification
+      await cancelNotification(notificationId);
+
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('[NotificationService] Error deleting: $e');
+      return false;
+    }
+  }
+
   /// Get unread notification count
   Future<int> getUnreadCount() async {
     final notifications = await fetchAndScheduleNotifications();

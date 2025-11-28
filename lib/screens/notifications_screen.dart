@@ -63,8 +63,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     });
     widget.onNotificationRead?.call();
 
-    // Sync with backend in background
-    _notificationService.dismissNotification(notificationId);
+    // Sync with backend in background - delete permanently
+    _notificationService.deleteNotification(notificationId);
     _notificationService.updateBadgeCount();
   }
 

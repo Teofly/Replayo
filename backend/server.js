@@ -68,6 +68,7 @@ function basicAuth(req, res, next) {
     '/bookings/my-bookings',    // Public: prenotazioni utente (usa JWT, non Basic)
     '/public/config',           // Public: configurazioni app (no auth)
     '/notifications',           // Public: notifiche utente (usa JWT, non Basic)
+    '/user/stats',              // Public: statistiche utente (usa JWT, non Basic)
     '/devices/register',        // Public: ESP32 registrazione
     '/devices/heartbeat',       // Public: ESP32 heartbeat
     '/devices/marker',          // Public: ESP32 marker pulsante
@@ -1626,6 +1627,134 @@ app.post('/api/highlights/process-pending/:matchId', async (req, res) => {
     }
 });
 
+// POST /api/highlights/process-esp32/:bookingId - Processa button_markers ESP32 per una prenotazione
+// Usa i margini configurati nel dispositivo
+app.post('/api/highlights/process-esp32/:bookingId', async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+
+        // Trova la prenotazione e il video associato
+        const bookingResult = await pool.query(`
+            SELECT b.*, v.id as video_id, v.file_path, v.recorded_at as video_start_time
+            FROM bookings b
+            LEFT JOIN videos v ON v.match_id = b.id AND v.is_highlight = false
+            WHERE b.id = $1
+        `, [bookingId]);
+
+        if (bookingResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Prenotazione non trovata' });
+        }
+
+        const booking = bookingResult.rows[0];
+
+        if (!booking.video_id || !booking.file_path) {
+            return res.status(400).json({ error: 'Nessun video associato a questa prenotazione' });
+        }
+
+        // Verifica che il file video esista
+        try {
+            await fs.access(booking.file_path);
+        } catch (e) {
+            return res.status(404).json({ error: 'File video non trovato sul server' });
+        }
+
+        // Trova i button_markers non processati per questa prenotazione
+        const markersResult = await pool.query(`
+            SELECT bm.*, d.margin_before, d.margin_after, d.device_name
+            FROM button_markers bm
+            JOIN esp32_devices d ON bm.device_id = d.device_id
+            WHERE bm.booking_id = $1 AND bm.processed = false
+            ORDER BY bm.marker_time ASC
+        `, [bookingId]);
+
+        if (markersResult.rows.length === 0) {
+            return res.json({ success: true, message: 'Nessun marker da processare', highlightsCreated: 0 });
+        }
+
+        console.log(`🎮 Processando ${markersResult.rows.length} marker ESP32 per prenotazione ${bookingId}`);
+
+        const sourceDir = path.dirname(booking.file_path);
+        const sourceBasename = path.basename(booking.file_path, path.extname(booking.file_path));
+        const sourceExt = path.extname(booking.file_path);
+
+        // Conta highlight esistenti
+        const existingCount = await pool.query(
+            'SELECT COUNT(*) FROM videos WHERE match_id = $1 AND is_highlight = true',
+            [bookingId]
+        );
+        let highlightIndex = parseInt(existingCount.rows[0].count) + 1;
+
+        const createdHighlights = [];
+        const videoStartTime = new Date(booking.video_start_time).getTime();
+
+        for (const marker of markersResult.rows) {
+            const markerTime = new Date(marker.marker_time).getTime();
+            const marginBefore = marker.margin_before || 5;
+            const marginAfter = marker.margin_after || 10;
+
+            // Calcola offset nel video (secondi dall'inizio del video)
+            const markerOffsetSec = (markerTime - videoStartTime) / 1000;
+
+            // Calcola start e end time nel video
+            let startTime = Math.max(0, markerOffsetSec - marginBefore);
+            let endTime = markerOffsetSec + marginAfter;
+            const duration = endTime - startTime;
+
+            // Skip se il marker è fuori dal video
+            if (startTime < 0 || duration <= 0) {
+                console.warn(`⚠️ Marker ${marker.id} fuori range video, skip`);
+                continue;
+            }
+
+            const outputFilename = `${sourceBasename}_HL${highlightIndex}${sourceExt}`;
+            const outputFilePath = path.join(sourceDir, outputFilename);
+
+            console.log(`🎬 ESP32 Highlight #${highlightIndex}: ${startTime.toFixed(1)}s -> ${endTime.toFixed(1)}s (${duration.toFixed(1)}s) [device: ${marker.device_name}]`);
+
+            try {
+                await new Promise((resolve, reject) => {
+                    ffmpeg(booking.file_path)
+                        .setStartTime(startTime)
+                        .setDuration(duration)
+                        .outputOptions(['-c', 'copy'])
+                        .output(outputFilePath)
+                        .on('end', () => resolve())
+                        .on('error', (err) => reject(err))
+                        .run();
+                });
+
+                const hlStats = await fs.stat(outputFilePath);
+
+                const hlResult = await pool.query(
+                    `INSERT INTO videos (match_id, title, file_path, duration_seconds, file_size_bytes, recorded_at, is_highlight)
+                     VALUES ($1, $2, $3, $4, $5, NOW(), true) RETURNING *`,
+                    [bookingId, `Highlight #${highlightIndex}`, outputFilePath, duration, hlStats.size]
+                );
+
+                // Marca il button_marker come processato
+                await pool.query('UPDATE button_markers SET processed = true WHERE id = $1', [marker.id]);
+
+                createdHighlights.push(hlResult.rows[0]);
+                highlightIndex++;
+            } catch (ffmpegError) {
+                console.error(`❌ Errore FFmpeg per marker ${marker.id}:`, ffmpegError.message);
+            }
+        }
+
+        console.log(`✅ Creati ${createdHighlights.length} highlight da marker ESP32`);
+
+        res.json({
+            success: true,
+            highlightsCreated: createdHighlights.length,
+            highlights: createdHighlights
+        });
+
+    } catch (error) {
+        console.error('Error processing ESP32 markers:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Helper: format seconds to FFmpeg time format
 function formatSecondsToFFmpeg(totalSeconds) {
     const hours = Math.floor(totalSeconds / 3600);
@@ -2223,6 +2352,47 @@ app.put('/api/notifications/:id/dismiss', async (req, res) => {
   }
 });
 
+// DELETE /api/notifications/:id - Elimina notifica definitivamente (utente)
+app.delete('/api/notifications/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verifica JWT e che la notifica appartenga all'utente
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Token richiesto' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    const jwt = require('jsonwebtoken');
+    const JWT_SECRET = process.env.JWT_SECRET || 'replayo-jwt-secret-change-in-production-2024';
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch (err) {
+      return res.status(401).json({ error: 'Token non valido' });
+    }
+
+    const userId = decoded.userId;
+
+    // Elimina solo se appartiene all'utente
+    const result = await pool.query(
+      `DELETE FROM notifications WHERE id = $1 AND user_id = $2 RETURNING id`,
+      [id, userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Notifica non trovata' });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting notification:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // POST /api/notifications/mark-all-read - Mark all as read for user
 app.post('/api/notifications/mark-all-read', async (req, res) => {
   try {
@@ -2473,16 +2643,18 @@ app.get('/api/devices/:id', async (req, res) => {
 app.put('/api/devices/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { device_name, court_id } = req.body;
+    const { device_name, court_id, margin_before, margin_after } = req.body;
 
     const result = await pool.query(
       `UPDATE esp32_devices SET
          device_name = COALESCE($2, device_name),
-         court_id = COALESCE($3, court_id),
+         court_id = $3,
+         margin_before = COALESCE($4, margin_before),
+         margin_after = COALESCE($5, margin_after),
          updated_at = NOW()
        WHERE id = $1 OR device_id = $1
        RETURNING *`,
-      [id, device_name, court_id]
+      [id, device_name, court_id, margin_before, margin_after]
     );
 
     if (result.rows.length === 0) {
@@ -3670,6 +3842,144 @@ app.get('/api/bookings/my-bookings', async (req, res) => {
   } catch (error) {
     console.error('Error fetching my bookings:', error);
     res.status(500).json({ error: 'Errore nel recupero delle prenotazioni' });
+  }
+});
+
+// GET /api/user/stats - Statistiche utente (calcolate lato server)
+app.get('/api/user/stats', async (req, res) => {
+  try {
+    // Verifica token JWT
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Token mancante' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    const jwt = require('jsonwebtoken');
+    const JWT_SECRET = process.env.JWT_SECRET || 'replayo-jwt-secret-change-in-production-2024';
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch (err) {
+      return res.status(401).json({ error: 'Token non valido o scaduto' });
+    }
+
+    const userEmail = decoded.email;
+    if (!userEmail) {
+      return res.status(401).json({ error: 'Token non valido' });
+    }
+
+    // Query per tutte le prenotazioni dell'utente (passate e future)
+    const bookingsResult = await pool.query(`
+      SELECT
+        b.id, b.booking_date, b.start_time, b.end_time, b.duration_minutes,
+        b.status, b.total_price, c.sport_type, c.name as court_name
+      FROM bookings b
+      JOIN courts c ON b.court_id = c.id
+      WHERE (
+        b.customer_email = $1
+        OR array_to_string(b.player_names, ',') ILIKE $2
+      )
+      AND b.status IN ('confirmed', 'pending', 'completed')
+      ORDER BY b.booking_date DESC, b.start_time DESC
+    `, [userEmail, `%${userEmail}%`]);
+
+    const allBookings = bookingsResult.rows;
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+
+    // Separa passate e future
+    const pastBookings = allBookings.filter(b => {
+      const bookingDate = b.booking_date.toISOString().split('T')[0];
+      return bookingDate < today || (bookingDate === today && b.end_time < now.toTimeString().slice(0,5));
+    });
+
+    const upcomingBookings = allBookings.filter(b => {
+      const bookingDate = b.booking_date.toISOString().split('T')[0];
+      return bookingDate > today || (bookingDate === today && b.start_time >= now.toTimeString().slice(0,5));
+    });
+
+    // Partite giocate (passate, non cancellate)
+    const playedMatches = pastBookings.filter(b =>
+      b.status !== 'cancelled' && b.status !== 'annullata'
+    );
+
+    // Totale ore
+    let totalHours = 0;
+    for (const b of playedMatches) {
+      const duration = b.duration_minutes || 60;
+      totalHours += duration / 60;
+    }
+
+    // Totale speso
+    let totalSpent = 0;
+    for (const b of playedMatches) {
+      totalSpent += parseFloat(b.total_price) || 0;
+    }
+
+    // Statistiche per sport
+    const sportStats = {};
+    for (const b of playedMatches) {
+      const sport = b.sport_type || 'Altro';
+      const duration = b.duration_minutes || 60;
+      const court = b.court_name || 'Campo';
+
+      if (!sportStats[sport]) {
+        sportStats[sport] = { matches: 0, hours: 0, courts: {} };
+      }
+      sportStats[sport].matches += 1;
+      sportStats[sport].hours += duration / 60;
+      sportStats[sport].courts[court] = (sportStats[sport].courts[court] || 0) + 1;
+    }
+
+    // Giorno preferito della settimana
+    const dayCount = {};
+    for (const b of playedMatches) {
+      const date = new Date(b.booking_date);
+      const weekday = date.getDay(); // 0=Dom, 1=Lun, ...
+      dayCount[weekday] = (dayCount[weekday] || 0) + 1;
+    }
+    let favoriteDay = null;
+    let maxDayCount = 0;
+    for (const [day, count] of Object.entries(dayCount)) {
+      if (count > maxDayCount) {
+        maxDayCount = count;
+        favoriteDay = parseInt(day);
+      }
+    }
+
+    // Orario preferito
+    const hourCount = {};
+    for (const b of playedMatches) {
+      const hour = parseInt(b.start_time.split(':')[0]);
+      hourCount[hour] = (hourCount[hour] || 0) + 1;
+    }
+    let favoriteHour = null;
+    let maxHourCount = 0;
+    for (const [hour, count] of Object.entries(hourCount)) {
+      if (count > maxHourCount) {
+        maxHourCount = count;
+        favoriteHour = parseInt(hour);
+      }
+    }
+
+    res.json({
+      success: true,
+      stats: {
+        totalMatches: playedMatches.length,
+        totalHours: Math.round(totalHours * 10) / 10,
+        totalSpent: Math.round(totalSpent * 100) / 100,
+        upcomingCount: upcomingBookings.length,
+        sportStats,
+        favoriteDay,
+        favoriteHour
+      }
+    });
+
+  } catch (error) {
+    console.error('Error calculating user stats:', error);
+    res.status(500).json({ error: 'Errore nel calcolo delle statistiche' });
   }
 });
 

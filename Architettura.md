@@ -68,3 +68,9 @@ COMPLETATI (28/11/2025) - HIGHLIGHTS:
 - Naming file: {nomeOriginale}_HL{n}.mp4 nella stessa cartella del video originale
 - NOTA: Eseguire migrazione DB: backend/migrations/002_highlight_markers.sql
 - Prossimo step: pulsante fisico ESP32 per marker real-time durante partita
+
+  I dati delle prenotazioni vengono scaricati dall'endpoint /api/bookings/my-bookings, poi l'app fa tutti i calcoli client-side.
+  Vuoi che sposti questi calcoli lato server creando un endpoint dedicato /api/user/stats? Avrebbe senso se:
+  1. Vuoi alleggerire l'app
+  2. Vuoi aggiungere statistiche più complesse che richiedono query DB pesanti
+  3. Vuoi uniformare le stats tra app iOS e admin dashboard
