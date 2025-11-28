@@ -1076,10 +1076,76 @@ app.post('/api/videos/associate-from-nas', async (req, res) => {
 
       console.log(`✅ Video associato dal NAS: ${title} (${(fileSizeBytes / 1024 / 1024).toFixed(2)} MB)`);
 
+      const video = result.rows[0];
+
+      // Check for pending highlight markers and process them automatically
+      let highlightsGenerated = 0;
+      try {
+        const pendingMarkers = await pool.query(
+          'SELECT * FROM highlight_markers WHERE match_id = $1 AND processed = false ORDER BY start_time',
+          [matchId]
+        );
+
+        if (pendingMarkers.rows.length > 0) {
+          console.log(`🎬 Found ${pendingMarkers.rows.length} pending highlight markers - auto-extracting...`);
+
+          const sourceDir = path.dirname(filePath);
+          const sourceBasename = path.basename(filePath, path.extname(filePath));
+          const sourceExt = path.extname(filePath);
+
+          const existingCount = await pool.query(
+            'SELECT COUNT(*) FROM videos WHERE match_id = $1 AND is_highlight = true',
+            [matchId]
+          );
+          let highlightIndex = parseInt(existingCount.rows[0].count) + 1;
+
+          for (const marker of pendingMarkers.rows) {
+            const outputFilename = `${sourceBasename}_HL${highlightIndex}${sourceExt}`;
+            const outputFilePath = path.join(sourceDir, outputFilename);
+            const duration = marker.end_time - marker.start_time;
+
+            try {
+              await new Promise((resolve, reject) => {
+                ffmpeg(filePath)
+                  .setStartTime(marker.start_time)
+                  .setDuration(duration)
+                  .outputOptions(['-c', 'copy'])
+                  .output(outputFilePath)
+                  .on('end', () => resolve())
+                  .on('error', (err) => reject(err))
+                  .run();
+              });
+
+              const hlStats = await fs.stat(outputFilePath);
+
+              await pool.query(
+                `INSERT INTO videos (match_id, title, file_path, duration_seconds, file_size_bytes, recorded_at, is_highlight)
+                 VALUES ($1, $2, $3, $4, $5, NOW(), true)`,
+                [matchId, `Highlight #${highlightIndex}`, outputFilePath, duration, hlStats.size]
+              );
+
+              await pool.query('UPDATE highlight_markers SET processed = true WHERE id = $1', [marker.id]);
+
+              console.log(`✅ Highlight #${highlightIndex} estratto: ${outputFilename}`);
+              highlightIndex++;
+              highlightsGenerated++;
+            } catch (hlError) {
+              console.error(`❌ Errore estrazione highlight: ${hlError.message}`);
+            }
+          }
+        }
+      } catch (hlCheckError) {
+        // Tabella highlight_markers potrebbe non esistere ancora
+        console.log('Note: highlight_markers table not found or error checking markers');
+      }
+
       res.json({
         success: true,
-        message: 'Video associato con successo',
-        video: result.rows[0]
+        message: highlightsGenerated > 0
+          ? `Video associato con successo. ${highlightsGenerated} highlight(s) generati automaticamente!`
+          : 'Video associato con successo',
+        video: video,
+        highlightsGenerated: highlightsGenerated
       });
     } catch (fileError) {
       return res.status(404).json({ error: `File non trovato: ${filePath}` });
@@ -1276,6 +1342,292 @@ app.post('/api/videos/cleanup', async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 });
+
+// ==================== HIGHLIGHTS EXTRACTION ====================
+
+// POST /api/highlights/extract - Extract highlight clips from a video using FFmpeg
+app.post('/api/highlights/extract', async (req, res) => {
+    try {
+        const { matchId, videoId, markers } = req.body;
+
+        if (!matchId || !videoId || !markers || !Array.isArray(markers) || markers.length === 0) {
+            return res.status(400).json({ error: 'Missing required parameters: matchId, videoId, markers[]' });
+        }
+
+        // Get source video info
+        const videoResult = await pool.query('SELECT * FROM videos WHERE id = $1', [videoId]);
+        if (videoResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Video not found' });
+        }
+
+        const sourceVideo = videoResult.rows[0];
+        const sourceFilePath = sourceVideo.file_path;
+
+        // Check if source file exists
+        try {
+            await fs.access(sourceFilePath);
+        } catch (e) {
+            return res.status(404).json({ error: `Source video file not found: ${sourceFilePath}` });
+        }
+
+        // Get directory of source video
+        const sourceDir = path.dirname(sourceFilePath);
+        const sourceBasename = path.basename(sourceFilePath, path.extname(sourceFilePath));
+        const sourceExt = path.extname(sourceFilePath);
+
+        // Count existing highlights for this match
+        const existingCount = await pool.query(
+            'SELECT COUNT(*) FROM videos WHERE match_id = $1 AND is_highlight = true',
+            [matchId]
+        );
+        let highlightIndex = parseInt(existingCount.rows[0].count) + 1;
+
+        const createdHighlights = [];
+
+        // Process each marker
+        for (const marker of markers) {
+            const { startTime, endTime } = marker;
+
+            if (typeof startTime !== 'number' || typeof endTime !== 'number' || endTime <= startTime) {
+                console.warn(`Skipping invalid marker: start=${startTime}, end=${endTime}`);
+                continue;
+            }
+
+            // Generate output filename
+            const outputFilename = `${sourceBasename}_HL${highlightIndex}${sourceExt}`;
+            const outputFilePath = path.join(sourceDir, outputFilename);
+
+            // Format times for FFmpeg (HH:MM:SS.mmm)
+            const startFormatted = formatSecondsToFFmpeg(startTime);
+            const duration = endTime - startTime;
+
+            console.log(`🎬 Extracting highlight #${highlightIndex}: ${startFormatted} (${duration}s) -> ${outputFilename}`);
+
+            // Extract clip using FFmpeg
+            await new Promise((resolve, reject) => {
+                ffmpeg(sourceFilePath)
+                    .setStartTime(startTime)
+                    .setDuration(duration)
+                    .outputOptions(['-c', 'copy']) // Copy streams without re-encoding (fast)
+                    .output(outputFilePath)
+                    .on('start', (cmd) => {
+                        console.log(`FFmpeg command: ${cmd}`);
+                    })
+                    .on('end', () => {
+                        console.log(`✅ Highlight extracted: ${outputFilename}`);
+                        resolve();
+                    })
+                    .on('error', (err) => {
+                        console.error(`❌ FFmpeg error: ${err.message}`);
+                        reject(err);
+                    })
+                    .run();
+            });
+
+            // Get file size of created highlight
+            const hlStats = await fs.stat(outputFilePath);
+
+            // Insert highlight record into database
+            const hlResult = await pool.query(
+                `INSERT INTO videos (
+                    match_id, title, file_path, duration_seconds,
+                    file_size_bytes, recorded_at, is_highlight
+                ) VALUES ($1, $2, $3, $4, $5, NOW(), true)
+                RETURNING *`,
+                [
+                    matchId,
+                    `Highlight #${highlightIndex}`,
+                    outputFilePath,
+                    duration,
+                    hlStats.size
+                ]
+            );
+
+            createdHighlights.push(hlResult.rows[0]);
+            highlightIndex++;
+        }
+
+        console.log(`✅ ${createdHighlights.length} highlights created for match ${matchId}`);
+
+        res.json({
+            success: true,
+            highlightsCreated: createdHighlights.length,
+            highlights: createdHighlights
+        });
+
+    } catch (error) {
+        console.error('Error extracting highlights:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/highlights/markers/:matchId - Get saved markers for a match
+app.get('/api/highlights/markers/:matchId', async (req, res) => {
+    try {
+        const { matchId } = req.params;
+
+        const result = await pool.query(
+            'SELECT * FROM highlight_markers WHERE match_id = $1 AND processed = false ORDER BY start_time',
+            [matchId]
+        );
+
+        res.json({
+            success: true,
+            markers: result.rows.map(m => ({
+                id: m.id,
+                startTime: m.start_time,
+                endTime: m.end_time,
+                margin: m.margin,
+                processed: m.processed
+            }))
+        });
+    } catch (error) {
+        console.error('Error getting markers:', error);
+        // Se la tabella non esiste ancora, restituisci array vuoto
+        res.json({ success: true, markers: [] });
+    }
+});
+
+// POST /api/highlights/markers - Save a highlight marker for later extraction
+app.post('/api/highlights/markers', async (req, res) => {
+    try {
+        const { matchId, startTime, endTime, margin } = req.body;
+
+        if (!matchId || typeof startTime !== 'number' || typeof endTime !== 'number') {
+            return res.status(400).json({ error: 'Missing required parameters' });
+        }
+
+        const result = await pool.query(
+            `INSERT INTO highlight_markers (match_id, start_time, end_time, margin)
+             VALUES ($1, $2, $3, $4) RETURNING *`,
+            [matchId, startTime, endTime, margin || 2]
+        );
+
+        res.json({
+            success: true,
+            marker: result.rows[0]
+        });
+    } catch (error) {
+        console.error('Error saving marker:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// DELETE /api/highlights/markers/:markerId - Delete a highlight marker
+app.delete('/api/highlights/markers/:markerId', async (req, res) => {
+    try {
+        const { markerId } = req.params;
+
+        await pool.query('DELETE FROM highlight_markers WHERE id = $1', [markerId]);
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error deleting marker:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/highlights/process-pending/:matchId - Process all pending markers for a match
+app.post('/api/highlights/process-pending/:matchId', async (req, res) => {
+    try {
+        const { matchId } = req.params;
+        const { videoId } = req.body;
+
+        if (!videoId) {
+            return res.status(400).json({ error: 'videoId is required' });
+        }
+
+        // Get pending markers
+        const markersResult = await pool.query(
+            'SELECT * FROM highlight_markers WHERE match_id = $1 AND processed = false ORDER BY start_time',
+            [matchId]
+        );
+
+        if (markersResult.rows.length === 0) {
+            return res.json({ success: true, message: 'No pending markers', highlightsCreated: 0 });
+        }
+
+        // Get source video
+        const videoResult = await pool.query('SELECT * FROM videos WHERE id = $1', [videoId]);
+        if (videoResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Video not found' });
+        }
+
+        const sourceVideo = videoResult.rows[0];
+        const sourceFilePath = sourceVideo.file_path;
+
+        try {
+            await fs.access(sourceFilePath);
+        } catch (e) {
+            return res.status(404).json({ error: `Source video file not found` });
+        }
+
+        const sourceDir = path.dirname(sourceFilePath);
+        const sourceBasename = path.basename(sourceFilePath, path.extname(sourceFilePath));
+        const sourceExt = path.extname(sourceFilePath);
+
+        const existingCount = await pool.query(
+            'SELECT COUNT(*) FROM videos WHERE match_id = $1 AND is_highlight = true',
+            [matchId]
+        );
+        let highlightIndex = parseInt(existingCount.rows[0].count) + 1;
+
+        const createdHighlights = [];
+
+        for (const marker of markersResult.rows) {
+            const outputFilename = `${sourceBasename}_HL${highlightIndex}${sourceExt}`;
+            const outputFilePath = path.join(sourceDir, outputFilename);
+            const duration = marker.end_time - marker.start_time;
+
+            console.log(`🎬 Auto-extracting highlight #${highlightIndex}: ${marker.start_time}s -> ${marker.end_time}s`);
+
+            await new Promise((resolve, reject) => {
+                ffmpeg(sourceFilePath)
+                    .setStartTime(marker.start_time)
+                    .setDuration(duration)
+                    .outputOptions(['-c', 'copy'])
+                    .output(outputFilePath)
+                    .on('end', () => resolve())
+                    .on('error', (err) => reject(err))
+                    .run();
+            });
+
+            const hlStats = await fs.stat(outputFilePath);
+
+            const hlResult = await pool.query(
+                `INSERT INTO videos (match_id, title, file_path, duration_seconds, file_size_bytes, recorded_at, is_highlight)
+                 VALUES ($1, $2, $3, $4, $5, NOW(), true) RETURNING *`,
+                [matchId, `Highlight #${highlightIndex}`, outputFilePath, duration, hlStats.size]
+            );
+
+            // Mark marker as processed
+            await pool.query('UPDATE highlight_markers SET processed = true WHERE id = $1', [marker.id]);
+
+            createdHighlights.push(hlResult.rows[0]);
+            highlightIndex++;
+        }
+
+        console.log(`✅ Auto-processed ${createdHighlights.length} pending markers for match ${matchId}`);
+
+        res.json({
+            success: true,
+            highlightsCreated: createdHighlights.length,
+            highlights: createdHighlights
+        });
+
+    } catch (error) {
+        console.error('Error processing pending markers:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Helper: format seconds to FFmpeg time format
+function formatSecondsToFFmpeg(totalSeconds) {
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+}
 
 // Helper function to scan NAS directory
 function scanNasStorage(dirPath) {
@@ -2861,7 +3213,15 @@ app.get('/api/bookings/for-video-download', async (req, res) => {
 app.get('/api/bookings/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await pool.query('SELECT * FROM bookings WHERE id = $1', [id]);
+    const result = await pool.query(
+      `SELECT b.*, c.name as court_name, c.sport_type,
+              m.booking_code, m.id as match_id_resolved, m.access_password as match_password
+       FROM bookings b
+       LEFT JOIN courts c ON b.court_id = c.id
+       LEFT JOIN matches m ON b.match_id = m.id
+       WHERE b.id = $1`,
+      [id]
+    );
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Prenotazione non trovata' });
     }
@@ -3104,10 +3464,50 @@ app.put('/api/bookings/:id/user-cancel', async (req, res) => {
 app.delete("/api/bookings/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await pool.query("DELETE FROM bookings WHERE id = $1 RETURNING *", [id]);
-    if (result.rows.length === 0) {
+
+    // Prima recupera i dati della prenotazione per la notifica
+    const bookingResult = await pool.query(
+      `SELECT b.*, c.name as court_name, c.sport_type
+       FROM bookings b
+       JOIN courts c ON b.court_id = c.id
+       WHERE b.id = $1`,
+      [id]
+    );
+
+    if (bookingResult.rows.length === 0) {
       return res.status(404).json({ error: "Prenotazione non trovata" });
     }
+
+    const booking = bookingResult.rows[0];
+
+    // Elimina la prenotazione
+    await pool.query("DELETE FROM bookings WHERE id = $1", [id]);
+
+    // Invia notifica all'utente se ha un'email associata
+    if (booking.customer_email) {
+      const userResult = await pool.query(
+        `SELECT id FROM users WHERE email = $1`,
+        [booking.customer_email]
+      );
+
+      if (userResult.rows.length > 0) {
+        const userId = userResult.rows[0].id;
+        const bookingDate = new Date(booking.booking_date).toLocaleDateString('it-IT');
+        const startTime = booking.start_time.substring(0, 5);
+
+        await createNotification(
+          userId,
+          'booking_deleted',
+          'Prenotazione Cancellata dal Club',
+          `La tua prenotazione per ${booking.court_name} del ${bookingDate} alle ${startTime} è stata cancellata dal club. Per informazioni contatta la segreteria.`,
+          null, // booking_id è null perché è stato eliminato
+          null
+        );
+
+        console.log(`[Admin Delete] Notification sent to user ${booking.customer_email} for deleted booking ${id}`);
+      }
+    }
+
     res.json({ success: true, message: "Prenotazione eliminata" });
   } catch (error) {
     console.error("Error deleting booking:", error);
@@ -3210,6 +3610,55 @@ app.put('/api/bookings/:id', async (req, res) => {
         console.log(`✅ Match ${updatedBooking.match_id} aggiornato - Giocatori: ${bookingPlayerNames?.join(', ') || 'N/A'}`);
       } catch (matchError) {
         console.error('Error updating associated match:', matchError);
+      }
+    }
+
+    // Notifica all'utente se ci sono state modifiche significative (data, ora, campo)
+    const hasSignificantChanges =
+      (court_id && court_id !== existing.court_id) ||
+      (booking_date && booking_date !== existing.booking_date?.toISOString?.()?.split('T')[0] && booking_date !== existing.booking_date) ||
+      (start_time && start_time !== existing.start_time) ||
+      (end_time && end_time !== existing.end_time);
+
+    if (hasSignificantChanges && existing.customer_email) {
+      try {
+        const userResult = await pool.query(
+          `SELECT id FROM users WHERE email = $1`,
+          [existing.customer_email]
+        );
+
+        if (userResult.rows.length > 0) {
+          const userId = userResult.rows[0].id;
+
+          // Recupera nome campo aggiornato
+          const courtResult = await pool.query('SELECT name FROM courts WHERE id = $1', [updatedBooking.court_id]);
+          const courtName = courtResult.rows[0]?.name || 'Campo';
+
+          // Formatta date
+          const oldDate = new Date(existing.booking_date).toLocaleDateString('it-IT');
+          const newDate = new Date(updatedBooking.booking_date).toLocaleDateString('it-IT');
+          const oldTime = existing.start_time.substring(0, 5);
+          const newTime = updatedBooking.start_time.substring(0, 5);
+
+          let changeDetails = [];
+          if (booking_date && oldDate !== newDate) changeDetails.push(`data: ${oldDate} → ${newDate}`);
+          if (start_time && oldTime !== newTime) changeDetails.push(`ora: ${oldTime} → ${newTime}`);
+          if (court_id && court_id !== existing.court_id) changeDetails.push(`campo: ${courtName}`);
+
+          await createNotification(
+            userId,
+            'booking_modified',
+            'Prenotazione Modificata dal Club',
+            `La tua prenotazione è stata modificata: ${changeDetails.join(', ')}. Nuova prenotazione: ${courtName} il ${newDate} alle ${newTime}.`,
+            id,
+            null
+          );
+
+          console.log(`[Admin Update] Notification sent to user ${existing.customer_email} for modified booking ${id}`);
+        }
+      } catch (notifError) {
+        console.error('Error sending modification notification:', notifError);
+        // Non bloccare l'operazione se la notifica fallisce
       }
     }
 

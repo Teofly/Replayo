@@ -388,6 +388,71 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Sezione Highlights -->
+                    <div class="section">
+                        <h3>🎬 Generatore Highlights</h3>
+                        <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+                            Crea clip highlights da video delle partite. Seleziona una prenotazione, imposta i tempi di inizio/fine e genera automaticamente i clip.
+                        </p>
+
+                        <div class="form-grid">
+                            <div class="form-group" style="grid-column: span 2;">
+                                <label for="highlight-booking-select">Seleziona Prenotazione</label>
+                                <select id="highlight-booking-select" class="form-input" onchange="onHighlightBookingChange()">
+                                    <option value="">-- Seleziona una prenotazione --</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="highlight-margin">Margine Automatico (sec)</label>
+                                <input type="number" id="highlight-margin" class="form-input" value="2" min="0" max="10" step="1">
+                            </div>
+                        </div>
+
+                        <div id="highlight-booking-info" style="display: none; margin: 1rem 0; padding: 1rem; background: rgba(0,217,255,0.1); border-radius: 8px;">
+                            <p><strong>Partita:</strong> <span id="highlight-match-info">-</span></p>
+                            <p><strong>Video associato:</strong> <span id="highlight-video-info">Nessun video</span></p>
+                        </div>
+
+                        <div id="highlight-markers-section" style="display: none;">
+                            <h4 style="margin: 1.5rem 0 1rem;">Aggiungi Marker Highlight</h4>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label for="highlight-start-min">Inizio - Minuti</label>
+                                    <input type="number" id="highlight-start-min" class="form-input" min="0" max="180" value="0">
+                                </div>
+                                <div class="form-group">
+                                    <label for="highlight-start-sec">Inizio - Secondi</label>
+                                    <input type="number" id="highlight-start-sec" class="form-input" min="0" max="59" value="0">
+                                </div>
+                                <div class="form-group">
+                                    <label for="highlight-end-min">Fine - Minuti</label>
+                                    <input type="number" id="highlight-end-min" class="form-input" min="0" max="180" value="0">
+                                </div>
+                                <div class="form-group">
+                                    <label for="highlight-end-sec">Fine - Secondi</label>
+                                    <input type="number" id="highlight-end-sec" class="form-input" min="0" max="59" value="10">
+                                </div>
+                            </div>
+                            <button class="btn btn-secondary" onclick="addHighlightMarker()" style="margin-top: 0.5rem;">
+                                + Aggiungi Marker
+                            </button>
+
+                            <div id="highlight-markers-list" style="margin-top: 1.5rem;">
+                                <h4>Markers Salvati</h4>
+                                <div id="markers-container" style="margin-top: 0.5rem;">
+                                    <p style="color: var(--text-secondary);">Nessun marker aggiunto</p>
+                                </div>
+                            </div>
+
+                            <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.1);">
+                                <button class="btn btn-primary" onclick="generateHighlights()" id="generate-highlights-btn" disabled>
+                                    🎬 Genera Highlights
+                                </button>
+                                <span id="highlight-generate-status" style="margin-left: 1rem; color: var(--text-secondary);"></span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Bookings Page -->

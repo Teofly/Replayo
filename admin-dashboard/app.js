@@ -4956,7 +4956,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 setTimeout(loadClubImages, 100);
             }
             if (item.dataset.page === 'settings') {
-                setTimeout(() => { loadSmtpSettings(); loadAppConfig(); }, 100);
+                setTimeout(() => { loadSmtpSettings(); loadAppConfig(); loadHighlightBookings(); }, 100);
             }
             if (item.dataset.page === 'users') {
                 setTimeout(() => { loadUsers(); loadUsersStats(); }, 100);
@@ -5774,6 +5774,371 @@ async function saveConfig(key, value) {
         }
     } catch (error) {
         showNotification('Errore: ' + error.message, 'error');
+    }
+}
+
+// ==================== HIGHLIGHTS GENERATOR ====================
+
+let highlightMarkers = [];
+let currentHighlightBooking = null;
+let currentHighlightMatch = null;
+let currentHighlightVideo = null;
+
+async function loadHighlightBookings() {
+    try {
+        const select = document.getElementById('highlight-booking-select');
+        select.innerHTML = '<option value="">-- Caricamento... --</option>';
+
+        // Carica ultimi 14 giorni di prenotazioni con video
+        const today = new Date();
+        const allBookings = [];
+
+        for (let i = 0; i < 14; i++) {
+            const checkDate = new Date(today);
+            checkDate.setDate(checkDate.getDate() - i);
+            const dateStr = checkDate.toISOString().split('T')[0];
+
+            try {
+                const response = await apiFetch(`${API_BASE_URL}/bookings/for-video-download?date=${dateStr}`);
+                const data = await response.json();
+                if (data.bookings && data.bookings.length > 0) {
+                    // Filtra solo quelli con video
+                    const withVideo = data.bookings.filter(b => b.video_count > 0);
+                    allBookings.push(...withVideo);
+                }
+            } catch (e) {
+                // Ignora errori per singole date
+            }
+        }
+
+        select.innerHTML = '<option value="">-- Seleziona una prenotazione con video --</option>';
+
+        if (allBookings.length > 0) {
+            // Ordina per data decrescente
+            allBookings.sort((a, b) => new Date(b.booking_date) - new Date(a.booking_date));
+
+            for (const booking of allBookings) {
+                const date = new Date(booking.booking_date).toLocaleDateString('it-IT');
+                const time = booking.start_time ? booking.start_time.substring(0, 5) : '';
+                const option = document.createElement('option');
+                option.value = booking.booking_id;
+                option.textContent = `${date} ${time} - ${booking.customer_name || 'N/A'} - ${booking.court_name || ''} (${booking.sport_type || ''})`;
+                option.dataset.matchId = booking.match_id || '';
+                option.dataset.bookingCode = booking.booking_code || '';
+                select.appendChild(option);
+            }
+        } else {
+            select.innerHTML = '<option value="">-- Nessuna prenotazione con video trovata --</option>';
+        }
+    } catch (error) {
+        console.error('Error loading highlight bookings:', error);
+        document.getElementById('highlight-booking-select').innerHTML = '<option value="">-- Errore caricamento --</option>';
+    }
+}
+
+async function onHighlightBookingChange() {
+    const select = document.getElementById('highlight-booking-select');
+    const bookingId = select.value;
+    const selectedOption = select.options[select.selectedIndex];
+    const infoSection = document.getElementById('highlight-booking-info');
+    const markersSection = document.getElementById('highlight-markers-section');
+
+    if (!bookingId) {
+        infoSection.style.display = 'none';
+        markersSection.style.display = 'none';
+        currentHighlightBooking = null;
+        currentHighlightMatch = null;
+        currentHighlightVideo = null;
+        highlightMarkers = [];
+        return;
+    }
+
+    try {
+        // Usa i dati già salvati nell'option dal caricamento
+        const matchId = selectedOption?.dataset?.matchId;
+        const bookingCode = selectedOption?.dataset?.bookingCode;
+
+        // Ottieni dettagli prenotazione
+        const bookingRes = await apiFetch(`${API_BASE_URL}/bookings/${bookingId}`);
+        const bookingData = await bookingRes.json();
+        currentHighlightBooking = bookingData.booking || bookingData;
+
+        const bookingDate = currentHighlightBooking.booking_date || currentHighlightBooking.start_time;
+
+        document.getElementById('highlight-match-info').textContent =
+            `${currentHighlightBooking.customer_name || 'N/A'} - ${currentHighlightBooking.court_name || ''} - ${bookingDate ? new Date(bookingDate).toLocaleDateString('it-IT') : 'N/A'}`;
+
+        // Usa matchId dal dataset se disponibile
+        if (matchId) {
+            try {
+                // Ottieni video del match direttamente
+                const videoRes = await apiFetch(`${API_BASE_URL}/videos/match/${matchId}`);
+                const videoData = await videoRes.json();
+
+                // L'endpoint restituisce un array diretto o { videos: [...] }
+                const videos = Array.isArray(videoData) ? videoData : (videoData.videos || []);
+
+                // Trova il video principale (non highlight)
+                const mainVideo = videos.find(v => !v.is_highlight);
+
+                if (mainVideo) {
+                    currentHighlightVideo = mainVideo;
+                    currentHighlightMatch = { id: matchId };
+                    const duration = formatDuration(mainVideo.duration_seconds);
+                    document.getElementById('highlight-video-info').innerHTML =
+                        `<span style="color: var(--success);">✅ ${mainVideo.title} (${duration})</span>`;
+                    markersSection.style.display = 'block';
+
+                    // Carica markers esistenti per questo match
+                    await loadExistingMarkers(matchId);
+                } else {
+                    currentHighlightVideo = null;
+                    currentHighlightMatch = { id: matchId };
+                    document.getElementById('highlight-video-info').innerHTML =
+                        '<span style="color: var(--warning);">⚠️ Nessun video trovato per questo match</span>';
+                    markersSection.style.display = 'block'; // Permetti comunque di aggiungere marker
+                    await loadExistingMarkers(matchId);
+                }
+            } catch (videoError) {
+                console.error('Error loading video:', videoError);
+                document.getElementById('highlight-video-info').innerHTML =
+                    '<span style="color: var(--warning);">⚠️ Errore nel caricamento video</span>';
+                markersSection.style.display = 'none';
+            }
+        } else {
+            document.getElementById('highlight-video-info').innerHTML =
+                '<span style="color: var(--warning);">⚠️ Match ID non trovato</span>';
+            markersSection.style.display = 'none';
+        }
+
+        infoSection.style.display = 'block';
+
+    } catch (error) {
+        console.error('Error loading booking details:', error);
+        showNotification('Errore nel caricamento dettagli prenotazione', 'error');
+    }
+}
+
+async function loadExistingMarkers(matchId) {
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/highlights/markers/${matchId}`);
+        const data = await response.json();
+
+        if (data.success && data.markers) {
+            // Converti i marker dal DB al formato locale
+            highlightMarkers = data.markers.map(m => ({
+                id: m.id,
+                startTime: m.startTime,
+                endTime: m.endTime,
+                margin: m.margin,
+                fromDb: true  // Flag per sapere che viene dal DB
+            }));
+        } else {
+            highlightMarkers = [];
+        }
+        renderMarkersList();
+    } catch (error) {
+        // Se l'endpoint non esiste ancora, inizializza array vuoto
+        highlightMarkers = [];
+        renderMarkersList();
+    }
+}
+
+async function addHighlightMarker() {
+    const startMin = parseInt(document.getElementById('highlight-start-min').value) || 0;
+    const startSec = parseInt(document.getElementById('highlight-start-sec').value) || 0;
+    const endMin = parseInt(document.getElementById('highlight-end-min').value) || 0;
+    const endSec = parseInt(document.getElementById('highlight-end-sec').value) || 0;
+    const margin = parseInt(document.getElementById('highlight-margin').value) || 2;
+
+    const startTime = startMin * 60 + startSec;
+    const endTime = endMin * 60 + endSec;
+
+    if (endTime <= startTime) {
+        showNotification('Il tempo di fine deve essere maggiore del tempo di inizio', 'error');
+        return;
+    }
+
+    // Applica margine
+    const adjustedStart = Math.max(0, startTime - margin);
+    const adjustedEnd = endTime + margin;
+
+    // Verifica durata video (solo se video già associato)
+    if (currentHighlightVideo && adjustedEnd > currentHighlightVideo.duration_seconds) {
+        showNotification(`Il tempo di fine supera la durata del video (${formatDuration(currentHighlightVideo.duration_seconds)})`, 'error');
+        return;
+    }
+
+    // Se abbiamo un match, salva nel DB per estrazione automatica futura
+    if (currentHighlightMatch) {
+        try {
+            const response = await apiFetch(`${API_BASE_URL}/highlights/markers`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    matchId: currentHighlightMatch.id,
+                    startTime: adjustedStart,
+                    endTime: adjustedEnd,
+                    margin: margin
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                const marker = {
+                    id: data.marker.id,
+                    startTime: adjustedStart,
+                    endTime: adjustedEnd,
+                    margin: margin,
+                    fromDb: true
+                };
+
+                highlightMarkers.push(marker);
+                renderMarkersList();
+
+                // Reset inputs
+                document.getElementById('highlight-start-min').value = 0;
+                document.getElementById('highlight-start-sec').value = 0;
+                document.getElementById('highlight-end-min').value = 0;
+                document.getElementById('highlight-end-sec').value = 10;
+
+                showNotification('Marker salvato', 'success');
+            } else {
+                throw new Error(data.error);
+            }
+        } catch (error) {
+            console.error('Error saving marker:', error);
+            showNotification('Errore nel salvataggio marker: ' + error.message, 'error');
+        }
+    } else {
+        // Fallback: salva solo in memoria locale
+        const marker = {
+            id: Date.now(),
+            startTime: adjustedStart,
+            endTime: adjustedEnd,
+            margin: margin,
+            fromDb: false
+        };
+
+        highlightMarkers.push(marker);
+        renderMarkersList();
+
+        document.getElementById('highlight-start-min').value = 0;
+        document.getElementById('highlight-start-sec').value = 0;
+        document.getElementById('highlight-end-min').value = 0;
+        document.getElementById('highlight-end-sec').value = 10;
+
+        showNotification('Marker aggiunto (solo locale - match non trovato)', 'warning');
+    }
+}
+
+async function removeHighlightMarker(markerId) {
+    const marker = highlightMarkers.find(m => m.id === markerId);
+
+    // Se il marker è nel DB, eliminalo anche lì
+    if (marker && marker.fromDb) {
+        try {
+            await apiFetch(`${API_BASE_URL}/highlights/markers/${markerId}`, {
+                method: 'DELETE'
+            });
+        } catch (error) {
+            console.error('Error deleting marker from DB:', error);
+        }
+    }
+
+    highlightMarkers = highlightMarkers.filter(m => m.id !== markerId);
+    renderMarkersList();
+}
+
+function renderMarkersList() {
+    const container = document.getElementById('markers-container');
+    const generateBtn = document.getElementById('generate-highlights-btn');
+
+    if (highlightMarkers.length === 0) {
+        container.innerHTML = '<p style="color: var(--text-secondary);">Nessun marker aggiunto</p>';
+        generateBtn.disabled = true;
+        return;
+    }
+
+    generateBtn.disabled = !currentHighlightVideo;
+
+    let html = '<div style="display: flex; flex-direction: column; gap: 0.5rem;">';
+
+    highlightMarkers.forEach((marker, index) => {
+        const startFormatted = formatTimeMMSS(marker.startTime);
+        const endFormatted = formatTimeMMSS(marker.endTime);
+        const duration = marker.endTime - marker.startTime;
+
+        html += `
+            <div style="display: flex; align-items: center; gap: 1rem; padding: 0.75rem; background: rgba(255,255,255,0.05); border-radius: 6px;">
+                <span style="font-weight: bold; color: var(--accent-primary);">#${index + 1}</span>
+                <span>${startFormatted} → ${endFormatted}</span>
+                <span style="color: var(--text-secondary);">(${duration}s)</span>
+                <button class="btn btn-danger" style="padding: 0.25rem 0.5rem; font-size: 0.8rem; margin-left: auto;" onclick="removeHighlightMarker(${marker.id})">
+                    🗑️
+                </button>
+            </div>
+        `;
+    });
+
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function formatTimeMMSS(totalSeconds) {
+    const min = Math.floor(totalSeconds / 60);
+    const sec = totalSeconds % 60;
+    return `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+}
+
+async function generateHighlights() {
+    if (!currentHighlightVideo || !currentHighlightMatch || highlightMarkers.length === 0) {
+        showNotification('Seleziona una prenotazione con video e aggiungi almeno un marker', 'error');
+        return;
+    }
+
+    const statusEl = document.getElementById('highlight-generate-status');
+    const generateBtn = document.getElementById('generate-highlights-btn');
+
+    generateBtn.disabled = true;
+    statusEl.textContent = '⏳ Generazione in corso...';
+    statusEl.style.color = 'var(--accent-primary)';
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/highlights/extract`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                matchId: currentHighlightMatch.id,
+                videoId: currentHighlightVideo.id,
+                markers: highlightMarkers.map(m => ({
+                    startTime: m.startTime,
+                    endTime: m.endTime
+                }))
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            statusEl.textContent = `✅ ${data.highlightsCreated} highlight(s) generati con successo!`;
+            statusEl.style.color = 'var(--success)';
+            showNotification(`${data.highlightsCreated} highlights generati!`, 'success');
+
+            // Reset markers
+            highlightMarkers = [];
+            renderMarkersList();
+        } else {
+            throw new Error(data.error || 'Errore nella generazione');
+        }
+    } catch (error) {
+        console.error('Error generating highlights:', error);
+        statusEl.textContent = `❌ Errore: ${error.message}`;
+        statusEl.style.color = 'var(--danger)';
+        showNotification('Errore nella generazione highlights: ' + error.message, 'error');
+    } finally {
+        generateBtn.disabled = false;
     }
 }
 
