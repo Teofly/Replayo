@@ -1,14 +1,32 @@
 import 'package:app_links/app_links.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'config/app_theme.dart';
 import 'screens/splash_screen.dart';
 import 'screens/reset_password_screen.dart';
+import 'services/notification_service.dart';
+
+// Initialize notifications in background (non-blocking)
+void _initNotifications() {
+  Future.microtask(() async {
+    try {
+      final notificationService = NotificationService();
+      await notificationService.initialize();
+      debugPrint('Notifications initialized successfully');
+    } catch (e) {
+      debugPrint('Failed to initialize notifications: $e');
+    }
+  });
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('it', null);
+
+  // Initialize notifications in background (non-blocking)
+  _initNotifications();
 
   // Set system UI overlay style
   SystemChrome.setSystemUIOverlayStyle(

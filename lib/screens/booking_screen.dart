@@ -424,7 +424,102 @@ class _BookingScreenState extends State<BookingScreen> {
               Expanded(
                 child: _buildCurrentStep(),
               ),
+              // Fixed continue button at bottom
+              if (_shouldShowContinueButton()) _buildFixedContinueButton(),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  bool _shouldShowContinueButton() {
+    switch (_currentStep) {
+      case 1:
+        return _selectedSport != null;
+      case 2:
+        return _selectedDate != null;
+      case 3:
+        return _selectedTime != null;
+      case 4:
+        return _selectedSlot != null;
+      case 5:
+        return true; // Always show for step 5 (confirm)
+      default:
+        return false;
+    }
+  }
+
+  Widget _buildFixedContinueButton() {
+    final isConfirmStep = _currentStep == 5;
+    final buttonColors = isConfirmStep
+        ? [AppTheme.neonGreen, AppTheme.neonBlue]
+        : [AppTheme.neonBlue, AppTheme.neonPurple];
+    final glowColor = isConfirmStep ? AppTheme.neonGreen : AppTheme.neonBlue;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.darkBg.withOpacity(0.95),
+        border: Border(
+          top: BorderSide(color: glowColor.withOpacity(0.2)),
+        ),
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          width: double.infinity,
+          height: 56,
+          child: ElevatedButton(
+            onPressed: isConfirmStep
+                ? (_isBooking ? null : _bookSlot)
+                : _goToNextStep,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.transparent,
+              padding: EdgeInsets.zero,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              elevation: 0,
+            ),
+            child: Ink(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(colors: buttonColors),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(color: glowColor.withOpacity(0.4), blurRadius: 15, spreadRadius: 1),
+                ],
+              ),
+              child: Container(
+                alignment: Alignment.center,
+                child: _isBooking && isConfirmStep
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                      )
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            isConfirmStep ? Icons.check_circle : Icons.arrow_forward,
+                            color: Colors.white,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            isConfirmStep ? 'Invia Richiesta' : 'Continua',
+                            style: GoogleFonts.rajdhani(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                          if (!isConfirmStep) ...[
+                            const SizedBox(width: 8),
+                            const Icon(Icons.arrow_forward, color: Colors.white),
+                          ],
+                        ],
+                      ),
+              ),
+            ),
           ),
         ),
       ),
@@ -612,8 +707,7 @@ class _BookingScreenState extends State<BookingScreen> {
               ),
             ).animate().slideX(begin: -0.2, duration: 400.ms, delay: Duration(milliseconds: 100 * sports.indexOf(sport)));
           }),
-          const SizedBox(height: 24),
-          if (_selectedSport != null) _buildContinueButton(),
+          const SizedBox(height: 80), // Space for fixed button
         ],
       ),
     );
@@ -703,8 +797,7 @@ class _BookingScreenState extends State<BookingScreen> {
               ).animate().scale(begin: const Offset(0.8, 0.8), duration: 300.ms, delay: Duration(milliseconds: 30 * index));
             },
           ),
-          const SizedBox(height: 24),
-          if (_selectedDate != null) _buildContinueButton(),
+          const SizedBox(height: 80), // Space for fixed button
         ],
       ),
     );
@@ -868,8 +961,7 @@ class _BookingScreenState extends State<BookingScreen> {
                 ).animate().scale(begin: const Offset(0.9, 0.9), duration: 200.ms, delay: Duration(milliseconds: 30 * index));
               },
             ),
-          const SizedBox(height: 24),
-          if (_selectedTime != null) _buildContinueButton(),
+          const SizedBox(height: 80), // Space for fixed button
         ],
       ),
     );
@@ -1011,8 +1103,7 @@ class _BookingScreenState extends State<BookingScreen> {
                 ),
               ).animate().slideX(begin: 0.2, duration: 300.ms, delay: Duration(milliseconds: 80 * index));
             }),
-          const SizedBox(height: 24),
-          if (_selectedSlot != null) _buildContinueButton(),
+          const SizedBox(height: 80), // Space for fixed button
         ],
       ),
     );
@@ -1215,11 +1306,7 @@ class _BookingScreenState extends State<BookingScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 24),
-
-            // Confirm button
-            _buildConfirmButton(),
-            const SizedBox(height: 40),
+            const SizedBox(height: 80), // Space for fixed button at bottom
           ],
         ),
       ),
@@ -1324,46 +1411,6 @@ class _BookingScreenState extends State<BookingScreen> {
         ],
       ),
     );
-  }
-
-  Widget _buildContinueButton() {
-    return SizedBox(
-      width: double.infinity,
-      height: 55,
-      child: ElevatedButton(
-        onPressed: _goToNextStep,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.transparent,
-          shadowColor: Colors.transparent,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          padding: EdgeInsets.zero,
-        ),
-        child: Ink(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(colors: [AppTheme.neonBlue, AppTheme.neonPurple]),
-            borderRadius: BorderRadius.circular(15),
-          ),
-          child: Container(
-            alignment: Alignment.center,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  'Continua',
-                  style: GoogleFonts.rajdhani(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                const Icon(Icons.arrow_forward, color: Colors.white),
-              ],
-            ),
-          ),
-        ),
-      ),
-    ).animate().scale(begin: const Offset(0.9, 0.9), duration: 300.ms);
   }
 
   Widget _buildConfirmButton() {

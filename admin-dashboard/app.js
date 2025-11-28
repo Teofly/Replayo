@@ -3,11 +3,27 @@ const isLocal = window.location.hostname === 'localhost' ||
                 window.location.hostname === '127.0.0.1' ||
                 window.location.hostname.startsWith('192.168.');
 const API_BASE_URL = isLocal ? 'http://192.168.1.175:3000/api' : 'https://api.teofly.it/api';
+// Alias for notifications code (expects base URL without /api)
+const API_URL = isLocal ? 'http://192.168.1.175:3000' : 'https://api.teofly.it';
+
+// Debug log
+console.log('[RePlayo Admin] API_URL:', API_URL, 'API_BASE_URL:', API_BASE_URL, 'isLocal:', isLocal);
 
 // Escape string for use in onclick attributes
 function escapeAttr(str) {
     if (!str) return '';
     return String(str).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
+// Escape HTML entities to prevent XSS
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }
 
 // Sidebar toggle
@@ -4945,6 +4961,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (item.dataset.page === 'users') {
                 setTimeout(() => { loadUsers(); loadUsersStats(); }, 100);
             }
+            if (item.dataset.page === 'notifications') {
+                setTimeout(loadAllNotifications, 100);
+            }
         });
     });
 });
@@ -6260,5 +6279,234 @@ window.addEventListener('resize', () => {
             location.reload();
         }
     }, 400); // Wait 400ms after user stops resizing
+});
+
+// ==========================================
+// NOTIFICATIONS MANAGEMENT
+// ==========================================
+let allNotificationsData = [];
+
+async function loadAllNotifications() {
+    const container = document.getElementById('notifications-list');
+    if (!container) return;
+
+    container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 2rem;">Caricamento...</p>';
+
+    const url = `${API_URL}/api/admin/notifications`;
+    console.log('[loadAllNotifications] Fetching:', url);
+
+    try {
+        const response = await fetch(url, {
+            headers: getAuthHeader()
+        });
+
+        console.log('[loadAllNotifications] Response status:', response.status);
+
+        if (!response.ok) throw new Error(`Failed to fetch notifications: ${response.status}`);
+
+        const data = await response.json();
+        console.log('[loadAllNotifications] Data received:', data);
+        allNotificationsData = data.notifications || [];
+
+        // Update stats
+        const total = allNotificationsData.length;
+        const unread = allNotificationsData.filter(n => !n.read_at).length;
+        const read = allNotificationsData.filter(n => n.read_at).length;
+
+        document.getElementById('notif-total').textContent = total;
+        document.getElementById('notif-unread').textContent = unread;
+        document.getElementById('notif-read').textContent = read;
+
+        renderNotificationsList(allNotificationsData);
+    } catch (error) {
+        console.error('Error loading notifications:', error);
+        container.innerHTML = '<p style="color: var(--danger); text-align: center; padding: 2rem;">Errore nel caricamento delle notifiche</p>';
+    }
+}
+
+function filterNotifications() {
+    const search = (document.getElementById('notif-search')?.value || '').toLowerCase();
+    const typeFilter = document.getElementById('notif-type-filter')?.value || '';
+
+    let filtered = allNotificationsData;
+
+    if (search) {
+        filtered = filtered.filter(n =>
+            (n.user_name || '').toLowerCase().includes(search) ||
+            (n.title || '').toLowerCase().includes(search) ||
+            (n.message || '').toLowerCase().includes(search)
+        );
+    }
+
+    if (typeFilter) {
+        filtered = filtered.filter(n => n.type === typeFilter);
+    }
+
+    renderNotificationsList(filtered);
+}
+
+function renderNotificationsList(notifications) {
+    const container = document.getElementById('notifications-list');
+    if (!container) return;
+
+    if (notifications.length === 0) {
+        container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 2rem;">Nessuna notifica trovata</p>';
+        return;
+    }
+
+    const html = notifications.map(n => {
+        const isRead = !!n.read_at;
+        const typeLabels = {
+            'booking_confirmed': { label: 'Conferma', color: 'var(--success)' },
+            'booking_reminder': { label: 'Promemoria', color: 'var(--primary)' },
+            'booking_cancelled': { label: 'Cancellazione', color: 'var(--danger)' },
+            'custom': { label: 'Personalizzata', color: 'var(--warning)' }
+        };
+        const typeInfo = typeLabels[n.type] || { label: n.type, color: 'var(--text-secondary)' };
+        const createdAt = n.created_at ? new Date(n.created_at).toLocaleString('it-IT') : '-';
+        const readAt = n.read_at ? new Date(n.read_at).toLocaleString('it-IT') : '-';
+
+        return `
+            <div class="notification-card ${isRead ? 'read' : 'unread'}" style="background: var(--bg-card); border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 0.75rem; border-left: 4px solid ${typeInfo.color};">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 250px;">
+                        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+                            <span style="background: ${typeInfo.color}; color: white; padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.75rem;">${typeInfo.label}</span>
+                            <span style="font-weight: 600; color: var(--text-primary);">${escapeHtml(n.title || 'Senza titolo')}</span>
+                            ${!isRead ? '<span style="background: var(--danger); width: 8px; height: 8px; border-radius: 50%; display: inline-block;"></span>' : ''}
+                        </div>
+                        <p style="color: var(--text-secondary); margin: 0 0 0.5rem 0; font-size: 0.9rem;">${escapeHtml(n.message || '')}</p>
+                        <div style="font-size: 0.8rem; color: var(--text-muted);">
+                            👤 ${escapeHtml(n.user_name || 'Utente sconosciuto')} &nbsp;|&nbsp; 📅 ${createdAt}
+                            ${isRead ? `&nbsp;|&nbsp; ✅ Letta: ${readAt}` : ''}
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button class="btn btn-small btn-danger" onclick="deleteNotification(${n.id})" title="Elimina">🗑️</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    container.innerHTML = html;
+}
+
+async function deleteNotification(notificationId) {
+    if (!confirm('Eliminare questa notifica?')) return;
+
+    try {
+        const response = await fetch(`${API_URL}/api/admin/notifications/${notificationId}`, {
+            method: 'DELETE',
+            headers: getAuthHeader()
+        });
+
+        if (!response.ok) throw new Error('Failed to delete notification');
+
+        await loadAllNotifications();
+        showToast('Notifica eliminata', 'success');
+    } catch (error) {
+        console.error('Error deleting notification:', error);
+        showToast('Errore durante l\'eliminazione', 'error');
+    }
+}
+
+function openSendNotificationModal() {
+    const modal = document.getElementById('send-notification-modal');
+    if (!modal) return;
+
+    // Populate users dropdown
+    populateNotificationRecipients();
+
+    // Reset form
+    document.getElementById('send-notification-form').reset();
+
+    modal.style.display = 'flex';
+}
+
+function closeSendNotificationModal() {
+    const modal = document.getElementById('send-notification-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function populateNotificationRecipients() {
+    const select = document.getElementById('notif-recipient');
+    if (!select) return;
+
+    select.innerHTML = '<option value="">Caricamento utenti...</option>';
+
+    const url = `${API_URL}/api/admin/users`;
+    console.log('[populateNotificationRecipients] Fetching:', url);
+
+    try {
+        const response = await fetch(url, {
+            headers: getAuthHeader()
+        });
+
+        console.log('[populateNotificationRecipients] Response status:', response.status);
+
+        if (!response.ok) throw new Error(`Failed to fetch users: ${response.status}`);
+
+        const data = await response.json();
+        console.log('[populateNotificationRecipients] Data:', data);
+        const users = data.users || [];
+
+        // Only show users with accounts (email_verified or at least registered)
+        const registeredUsers = users.filter(u => u.email);
+
+        let options = '<option value="">Seleziona utente...</option>';
+        registeredUsers.forEach(u => {
+            options += `<option value="${u.id}">${escapeHtml(u.name)} (${escapeHtml(u.email || '')})</option>`;
+        });
+
+        select.innerHTML = options;
+    } catch (error) {
+        console.error('Error loading users for notifications:', error);
+        select.innerHTML = '<option value="">Errore caricamento utenti</option>';
+    }
+}
+
+// Send notification form handler
+document.addEventListener('DOMContentLoaded', () => {
+    const form = document.getElementById('send-notification-form');
+    if (form) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const userId = document.getElementById('notif-recipient').value;
+            const title = document.getElementById('notif-title').value.trim();
+            const message = document.getElementById('notif-message').value.trim();
+
+            if (!userId || !title || !message) {
+                showToast('Compila tutti i campi', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/api/admin/notifications`, {
+                    method: 'POST',
+                    headers: {
+                        ...getAuthHeader(),
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        user_id: userId,
+                        type: 'custom',
+                        title: title,
+                        message: message
+                    })
+                });
+
+                if (!response.ok) throw new Error('Failed to send notification');
+
+                closeSendNotificationModal();
+                await loadAllNotifications();
+                showToast('Notifica inviata con successo', 'success');
+            } catch (error) {
+                console.error('Error sending notification:', error);
+                showToast('Errore durante l\'invio della notifica', 'error');
+            }
+        });
+    }
 });
 

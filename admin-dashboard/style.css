@@ -2732,3 +2732,264 @@ body {
         opacity: 0;
     }
 }
+
+/* ========================================
+   NOTIFICATIONS MODAL & FORM - DARK THEME
+   ======================================== */
+
+/* Modal header styling */
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid rgba(0, 255, 245, 0.1);
+}
+
+.modal-header h3 {
+    color: var(--accent-primary);
+    margin: 0;
+    font-size: 1.25rem;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: all 0.2s ease;
+}
+
+.modal-close:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* Form inputs in dark theme */
+.form-input,
+.modal-content input[type="text"],
+.modal-content input[type="email"],
+.modal-content input[type="tel"],
+.modal-content input[type="number"],
+.modal-content input[type="password"],
+.modal-content input[type="date"],
+.modal-content input[type="time"],
+.modal-content select,
+.modal-content textarea {
+    background: var(--bg-dark) !important;
+    border: 1px solid rgba(0, 255, 245, 0.2) !important;
+    color: var(--text-primary) !important;
+    padding: 0.875rem 1rem !important;
+    min-height: 48px !important;
+    border-radius: 8px !important;
+    font-size: 1rem !important;
+    width: 100%;
+    box-sizing: border-box;
+    transition: all 0.3s ease;
+}
+
+/* Textarea special sizing */
+.modal-content textarea.form-input,
+.modal-content textarea {
+    min-height: 120px !important;
+    resize: vertical;
+}
+
+.form-input:focus,
+.modal-content input:focus,
+.modal-content select:focus,
+.modal-content textarea:focus {
+    outline: none !important;
+    border-color: var(--accent-primary) !important;
+    box-shadow: 0 0 10px rgba(0, 255, 245, 0.3) !important;
+}
+
+.modal-content select option {
+    background: var(--bg-card);
+    color: var(--text-primary);
+}
+
+/* Form actions in modal */
+.form-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(0, 255, 245, 0.1);
+}
+
+/* Notifications page specific styles */
+#page-notifications .section {
+    background: var(--bg-card);
+}
+
+#notif-search,
+#notif-type-filter {
+    background: var(--bg-dark) !important;
+    border: 1px solid rgba(0, 255, 245, 0.2) !important;
+    color: var(--text-primary) !important;
+    padding: 0.75rem !important;
+    border-radius: 8px !important;
+}
+
+/* Send Notification Modal - specific IDs */
+#notif-recipient,
+#notif-title,
+#notif-message,
+#send-notification-modal input,
+#send-notification-modal select,
+#send-notification-modal textarea {
+    background: var(--bg-dark) !important;
+    border: 1px solid rgba(0, 255, 245, 0.2) !important;
+    color: var(--text-primary) !important;
+    padding: 0.875rem 1rem !important;
+    min-height: 48px !important;
+    border-radius: 8px !important;
+    font-size: 1.1rem !important;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+#notif-message {
+    min-height: 120px !important;
+    font-size: 1.1rem !important;
+}
+
+#send-notification-modal .modal-content {
+    background: var(--bg-card) !important;
+}
+
+#send-notification-modal label {
+    color: var(--text-primary) !important;
+    margin-bottom: 0.5rem;
+    display: block;
+}
+
+#notif-search::placeholder {
+    color: var(--text-secondary);
+}
+
+/* Notification list items */
+.notification-item {
+    background: var(--bg-dark);
+    border: 1px solid rgba(0, 255, 245, 0.1);
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 0.75rem;
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+    transition: all 0.2s ease;
+}
+
+.notification-item:hover {
+    border-color: var(--accent-primary);
+    background: rgba(0, 255, 245, 0.05);
+}
+
+.notification-item .notif-icon {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+
+.notification-item .notif-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.notification-item .notif-title {
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+}
+
+.notification-item .notif-message {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+}
+
+.notification-item .notif-meta {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    flex-wrap: wrap;
+}
+
+.notification-item .notif-meta .user-name {
+    color: var(--accent-primary);
+}
+
+.notification-item .notif-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.notification-item.unread {
+    border-left: 3px solid var(--accent-primary);
+}
+
+/* Type badge for notifications */
+.notif-type-badge {
+    display: inline-block;
+    padding: 0.2rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.notif-type-badge.booking_confirmed {
+    background: rgba(0, 255, 136, 0.2);
+    color: var(--success);
+}
+
+.notif-type-badge.booking_reminder {
+    background: rgba(0, 255, 245, 0.2);
+    color: var(--accent-primary);
+}
+
+.notif-type-badge.booking_cancelled {
+    background: rgba(255, 51, 102, 0.2);
+    color: var(--danger);
+}
+
+.notif-type-badge.custom {
+    background: rgba(123, 44, 191, 0.2);
+    color: var(--accent-secondary);
+}
+
+/* btn-info style */
+.btn-info {
+    background: linear-gradient(135deg, #17a2b8, #138496);
+    color: white;
+    border: none;
+}
+
+.btn-info:hover {
+    box-shadow: 0 0 15px rgba(23, 162, 184, 0.4);
+}
+
+/* btn-warning style */
+.btn-warning {
+    background: linear-gradient(135deg, var(--warning), #e69500);
+    color: var(--bg-dark);
+    border: none;
+    font-weight: 600;
+}
+
+.btn-warning:hover {
+    box-shadow: 0 0 15px rgba(255, 170, 0, 0.4);
+}

@@ -184,7 +184,7 @@ class UserAuthService extends ChangeNotifier {
 
     try {
       final response = await http.post(
-        Uri.parse('$_baseUrl/auth/refresh-token'),
+        Uri.parse('$_baseUrl/auth/refresh'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'refreshToken': _refreshToken}),
       );

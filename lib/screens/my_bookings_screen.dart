@@ -32,7 +32,7 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _loadPublicConfig();
     _loadBookings();
   }
@@ -490,6 +490,16 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
                 ],
               ),
             ),
+            const Tab(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.bar_chart, size: 20),
+                  SizedBox(width: 8),
+                  Text('Stats'),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -562,6 +572,7 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
                   children: [
                     _buildBookingsList(_upcomingBookings, isUpcoming: true),
                     _buildBookingsList(_pastBookings, isUpcoming: false),
+                    _buildStatisticsTab(),
                   ],
                 ),
     );
@@ -937,6 +948,404 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
           ),
         ],
       ),
+    );
+  }
+
+  // Calculate statistics from bookings
+  Map<String, dynamic> _calculateStats() {
+    final allBookings = [..._upcomingBookings, ..._pastBookings];
+
+    // Total matches played (past only, confirmed/completed)
+    final playedMatches = _pastBookings.where((b) {
+      final status = b['status']?.toString().toLowerCase() ?? '';
+      return status != 'cancelled' && status != 'annullata';
+    }).toList();
+
+    // Total hours
+    double totalHours = 0;
+    for (final booking in playedMatches) {
+      final duration = int.tryParse(booking['duration']?.toString() ?? '60') ?? 60;
+      totalHours += duration / 60;
+    }
+
+    // Total spent
+    double totalSpent = 0;
+    for (final booking in playedMatches) {
+      final price = double.tryParse(booking['total_price']?.toString() ?? '0') ?? 0;
+      totalSpent += price;
+    }
+
+    // Group by sport
+    final Map<String, Map<String, dynamic>> sportStats = {};
+    for (final booking in playedMatches) {
+      final sport = (booking['sport_type'] ?? booking['sport'] ?? 'Altro').toString();
+      final duration = int.tryParse(booking['duration']?.toString() ?? '60') ?? 60;
+      final court = booking['court_name']?.toString() ?? 'Campo';
+
+      if (!sportStats.containsKey(sport)) {
+        sportStats[sport] = {
+          'matches': 0,
+          'hours': 0.0,
+          'courts': <String, int>{},
+        };
+      }
+      sportStats[sport]!['matches'] = (sportStats[sport]!['matches'] as int) + 1;
+      sportStats[sport]!['hours'] = (sportStats[sport]!['hours'] as double) + (duration / 60);
+
+      final courts = sportStats[sport]!['courts'] as Map<String, int>;
+      courts[court] = (courts[court] ?? 0) + 1;
+    }
+
+    // Find favorite day of week
+    final Map<int, int> dayCount = {};
+    for (final booking in playedMatches) {
+      final dateStr = (booking['booking_date'] ?? booking['date'])?.toString().split('T')[0] ?? '';
+      try {
+        final date = DateTime.parse(dateStr);
+        dayCount[date.weekday] = (dayCount[date.weekday] ?? 0) + 1;
+      } catch (e) {}
+    }
+    int? favoriteDay;
+    int maxDayCount = 0;
+    dayCount.forEach((day, count) {
+      if (count > maxDayCount) {
+        maxDayCount = count;
+        favoriteDay = day;
+      }
+    });
+
+    // Find favorite time slot
+    final Map<int, int> hourCount = {};
+    for (final booking in playedMatches) {
+      final timeStr = booking['start_time']?.toString() ?? '00:00';
+      try {
+        final hour = int.parse(timeStr.split(':')[0]);
+        hourCount[hour] = (hourCount[hour] ?? 0) + 1;
+      } catch (e) {}
+    }
+    int? favoriteHour;
+    int maxHourCount = 0;
+    hourCount.forEach((hour, count) {
+      if (count > maxHourCount) {
+        maxHourCount = count;
+        favoriteHour = hour;
+      }
+    });
+
+    return {
+      'totalMatches': playedMatches.length,
+      'totalHours': totalHours,
+      'totalSpent': totalSpent,
+      'upcomingCount': _upcomingBookings.length,
+      'sportStats': sportStats,
+      'favoriteDay': favoriteDay,
+      'favoriteHour': favoriteHour,
+    };
+  }
+
+  String _getDayName(int? weekday) {
+    if (weekday == null) return '-';
+    const days = ['', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'];
+    return days[weekday];
+  }
+
+  Widget _buildStatisticsTab() {
+    final stats = _calculateStats();
+    final sportStats = stats['sportStats'] as Map<String, Map<String, dynamic>>;
+
+    if (_pastBookings.isEmpty && _upcomingBookings.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.bar_chart, size: 64, color: Colors.white24),
+            const SizedBox(height: 16),
+            Text(
+              'Nessuna statistica disponibile',
+              style: GoogleFonts.rajdhani(
+                fontSize: 18,
+                color: Colors.white54,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Prenota la tua prima partita!',
+              style: GoogleFonts.roboto(
+                fontSize: 14,
+                color: Colors.white38,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Text(
+            'RIEPILOGO ATTIVITÀ',
+            style: GoogleFonts.orbitron(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.neonBlue,
+              letterSpacing: 2,
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Main stats grid
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppTheme.darkCard,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppTheme.neonBlue.withOpacity(0.3)),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(child: _buildStatCard(
+                      icon: Icons.sports_score,
+                      label: 'Partite Giocate',
+                      value: '${stats['totalMatches']}',
+                      color: AppTheme.neonGreen,
+                    )),
+                    const SizedBox(width: 12),
+                    Expanded(child: _buildStatCard(
+                      icon: Icons.timer,
+                      label: 'Ore Giocate',
+                      value: '${(stats['totalHours'] as double).toStringAsFixed(1)}h',
+                      color: AppTheme.neonBlue,
+                    )),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(child: _buildStatCard(
+                      icon: Icons.euro,
+                      label: 'Spesa Totale',
+                      value: '€${(stats['totalSpent'] as double).toStringAsFixed(0)}',
+                      color: AppTheme.neonPink,
+                    )),
+                    const SizedBox(width: 12),
+                    Expanded(child: _buildStatCard(
+                      icon: Icons.event,
+                      label: 'Prossime',
+                      value: '${stats['upcomingCount']}',
+                      color: AppTheme.neonPurple,
+                    )),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          // Sport breakdown
+          if (sportStats.isNotEmpty) ...[
+            Text(
+              'PER SPORT',
+              style: GoogleFonts.orbitron(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.neonPink,
+                letterSpacing: 2,
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            ...sportStats.entries.map((entry) {
+              final sport = entry.key;
+              final data = entry.value;
+              final courts = data['courts'] as Map<String, int>;
+              String? favoriteCourt;
+              int maxCourt = 0;
+              courts.forEach((court, count) {
+                if (count > maxCourt) {
+                  maxCourt = count;
+                  favoriteCourt = court;
+                }
+              });
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppTheme.darkCard,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: _getSportColor(sport).withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: _getSportColor(sport).withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        _getSportIcon(sport),
+                        color: _getSportColor(sport),
+                        size: 28,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            sport.toUpperCase(),
+                            style: GoogleFonts.rajdhani(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${data['matches']} partite · ${(data['hours'] as double).toStringAsFixed(1)}h',
+                            style: GoogleFonts.roboto(
+                              fontSize: 14,
+                              color: Colors.white70,
+                            ),
+                          ),
+                          if (favoriteCourt != null) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              'Preferito: $favoriteCourt',
+                              style: GoogleFonts.roboto(
+                                fontSize: 12,
+                                color: Colors.white38,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+
+          const SizedBox(height: 24),
+
+          // Records
+          Text(
+            'I TUOI RECORD',
+            style: GoogleFonts.orbitron(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.neonGreen,
+              letterSpacing: 2,
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppTheme.darkCard,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppTheme.neonGreen.withOpacity(0.3)),
+            ),
+            child: Column(
+              children: [
+                _buildRecordRow(
+                  icon: Icons.calendar_today,
+                  label: 'Giorno preferito',
+                  value: _getDayName(stats['favoriteDay']),
+                ),
+                const Divider(color: Colors.white12, height: 24),
+                _buildRecordRow(
+                  icon: Icons.access_time,
+                  label: 'Orario preferito',
+                  value: stats['favoriteHour'] != null
+                      ? '${stats['favoriteHour']}:00'
+                      : '-',
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 32),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatCard({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: GoogleFonts.orbitron(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: GoogleFonts.rajdhani(
+              fontSize: 12,
+              color: Colors.white54,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecordRow({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    return Row(
+      children: [
+        Icon(icon, color: Colors.white38, size: 20),
+        const SizedBox(width: 12),
+        Text(
+          label,
+          style: GoogleFonts.rajdhani(
+            fontSize: 14,
+            color: Colors.white54,
+          ),
+        ),
+        const Spacer(),
+        Text(
+          value,
+          style: GoogleFonts.rajdhani(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+      ],
     );
   }
 }

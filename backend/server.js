@@ -67,6 +67,7 @@ function basicAuth(req, res, next) {
     '/auth/verify-reset-token', // Public: verifica token reset
     '/bookings/my-bookings',    // Public: prenotazioni utente (usa JWT, non Basic)
     '/public/config',           // Public: configurazioni app (no auth)
+    '/notifications',           // Public: notifiche utente (usa JWT, non Basic)
   ];
   // Also allow video streaming, download and view endpoints
   // And POST /bookings for user booking requests (will be pending status)
@@ -1770,6 +1771,128 @@ app.delete('/api/club/images/:filename', async (req, res) => {
 setupAuthRoutes(app, pool);
 console.log('🔐 Auth system loaded');
 
+// ==================== NOTIFICATIONS API ====================
+
+// Helper function to create a notification
+async function createNotification(userId, type, title, message, bookingId = null, scheduledAt = null) {
+  try {
+    const result = await pool.query(
+      `INSERT INTO notifications (user_id, type, title, message, booking_id, scheduled_at)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [userId, type, title, message, bookingId, scheduledAt]
+    );
+    return result.rows[0];
+  } catch (error) {
+    console.error('Error creating notification:', error);
+    return null;
+  }
+}
+
+// GET /api/notifications - Get notifications for authenticated user
+app.get('/api/notifications', async (req, res) => {
+  try {
+    // Get user from JWT token
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Token richiesto' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    const jwt = require('jsonwebtoken');
+    const JWT_SECRET = process.env.JWT_SECRET || 'replayo-jwt-secret-change-in-production-2024';
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch (err) {
+      return res.status(401).json({ error: 'Token non valido' });
+    }
+
+    const userId = decoded.userId;
+
+    // Get unread notifications and upcoming reminders
+    const result = await pool.query(
+      `SELECT n.*,
+              b.booking_date, b.start_time, b.end_time,
+              c.name as court_name, c.sport_type
+       FROM notifications n
+       LEFT JOIN bookings b ON n.booking_id = b.id
+       LEFT JOIN courts c ON b.court_id = c.id
+       WHERE n.user_id = $1
+         AND n.dismissed_at IS NULL
+         AND (n.scheduled_at IS NULL OR n.scheduled_at <= NOW() + INTERVAL '7 days')
+       ORDER BY COALESCE(n.scheduled_at, n.created_at) DESC
+       LIMIT 50`,
+      [userId]
+    );
+
+    res.json({ success: true, notifications: result.rows });
+  } catch (error) {
+    console.error('Error fetching notifications:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PUT /api/notifications/:id/read - Mark notification as read
+app.put('/api/notifications/:id/read', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    await pool.query(
+      `UPDATE notifications SET read_at = NOW() WHERE id = $1`,
+      [id]
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PUT /api/notifications/:id/dismiss - Dismiss notification
+app.put('/api/notifications/:id/dismiss', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    await pool.query(
+      `UPDATE notifications SET dismissed_at = NOW() WHERE id = $1`,
+      [id]
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/notifications/mark-all-read - Mark all as read for user
+app.post('/api/notifications/mark-all-read', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Token richiesto' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    const jwt = require('jsonwebtoken');
+    const JWT_SECRET = process.env.JWT_SECRET || 'replayo-jwt-secret-change-in-production-2024';
+
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const userId = decoded.userId;
+
+    await pool.query(
+      `UPDATE notifications SET read_at = NOW()
+       WHERE user_id = $1 AND read_at IS NULL`,
+      [userId]
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`🚀 RePlayo API server running on http://localhost:${PORT}`);
@@ -2794,14 +2917,58 @@ app.put('/api/bookings/:id/confirm', async (req, res) => {
     // Ricarica booking
     const updatedResult = await pool.query(
       `SELECT b.*, c.name as court_name, c.sport_type, m.booking_code as match_booking_code, m.access_password as match_password
-       FROM bookings b 
-       JOIN courts c ON b.court_id = c.id 
+       FROM bookings b
+       JOIN courts c ON b.court_id = c.id
        LEFT JOIN matches m ON b.match_id = m.id
        WHERE b.id = $1`,
       [id]
     );
-    
-    res.json(updatedResult.rows[0]);
+
+    const updatedBooking = updatedResult.rows[0];
+
+    // Create notifications for the user if we have their user_id
+    if (booking.customer_email) {
+      // Find user by email
+      const userResult = await pool.query(
+        `SELECT id FROM users WHERE email = $1`,
+        [booking.customer_email]
+      );
+
+      if (userResult.rows.length > 0) {
+        const userId = userResult.rows[0].id;
+        const bookingDate = new Date(booking.booking_date).toLocaleDateString('it-IT');
+        const startTime = booking.start_time.substring(0, 5);
+
+        // 1. Immediate notification: booking confirmed
+        await createNotification(
+          userId,
+          'booking_confirmed',
+          'Prenotazione Confermata',
+          `La tua prenotazione per ${booking.court_name} il ${bookingDate} alle ${startTime} è stata confermata!`,
+          id,
+          null // immediate
+        );
+
+        // 2. Reminder notification: X hours before (using booking_reminder_hours config)
+        const reminderHours = parseInt(getConfig('booking_reminder_hours', 2));
+        const bookingDateTime = new Date(`${booking.booking_date.toISOString().split('T')[0]}T${booking.start_time}`);
+        const reminderTime = new Date(bookingDateTime.getTime() - (reminderHours * 60 * 60 * 1000));
+
+        // Only create reminder if it's in the future
+        if (reminderTime > new Date()) {
+          await createNotification(
+            userId,
+            'booking_reminder',
+            'Promemoria Partita',
+            `Ricorda: hai una partita di ${booking.sport_type} su ${booking.court_name} tra ${reminderHours} ore!`,
+            id,
+            reminderTime
+          );
+        }
+      }
+    }
+
+    res.json(updatedBooking);
   } catch (error) {
     console.error('Error confirming booking:', error);
     res.status(500).json({ error: 'Errore nella conferma della prenotazione' });
@@ -2899,6 +3066,25 @@ app.put('/api/bookings/:id/user-cancel', async (req, res) => {
     const result = await pool.query(
       `UPDATE bookings SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`,
       [id]
+    );
+
+    // Delete pending reminder notifications for this booking
+    await pool.query(
+      `UPDATE notifications SET dismissed_at = NOW()
+       WHERE booking_id = $1 AND type = 'booking_reminder' AND dismissed_at IS NULL`,
+      [id]
+    );
+
+    // Create cancellation notification
+    const bookingDate = new Date(booking.booking_date).toLocaleDateString('it-IT');
+    const startTime = booking.start_time.substring(0, 5);
+    await createNotification(
+      decoded.userId,
+      'booking_cancelled',
+      'Prenotazione Cancellata',
+      `Hai cancellato la prenotazione per ${booking.court_name} del ${bookingDate} alle ${startTime}.`,
+      id,
+      null
     );
 
     console.log(`[User Cancel] Booking ${id} cancelled by user ${userEmail}`);
@@ -3252,6 +3438,85 @@ app.post('/api/admin/users/:id/toggle-admin', async (req, res) => {
 
 console.log('👥 Unified users API loaded');
 
+// ==========================================
+// ADMIN NOTIFICATIONS API
+// ==========================================
+
+// GET /api/admin/notifications - Get all notifications (admin)
+app.get('/api/admin/notifications', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT n.*, u.name as user_name, u.email as user_email
+      FROM notifications n
+      LEFT JOIN users u ON n.user_id = u.id
+      ORDER BY n.created_at DESC
+      LIMIT 500
+    `);
+    res.json({ success: true, notifications: result.rows });
+  } catch (error) {
+    console.error('Error fetching admin notifications:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/admin/notifications - Create notification (admin)
+app.post('/api/admin/notifications', async (req, res) => {
+  try {
+    const { user_id, type, title, message } = req.body;
+
+    if (!user_id || !type || !title || !message) {
+      return res.status(400).json({ success: false, error: 'Missing required fields' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO notifications (user_id, type, title, message)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [user_id, type, title, message]
+    );
+
+    console.log(`[Admin] Created notification for user ${user_id}: ${title}`);
+    res.json({ success: true, notification: result.rows[0] });
+  } catch (error) {
+    console.error('Error creating notification:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// DELETE /api/admin/notifications/:id - Delete notification (admin)
+app.delete('/api/admin/notifications/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    await pool.query('DELETE FROM notifications WHERE id = $1', [id]);
+
+    console.log(`[Admin] Deleted notification ${id}`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting notification:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// GET /api/admin/notifications/stats - Get notification statistics (admin)
+app.get('/api/admin/notifications/stats', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        COUNT(*) as total,
+        COUNT(CASE WHEN dismissed_at IS NOT NULL THEN 1 END) as dismissed,
+        COUNT(CASE WHEN read_at IS NOT NULL AND dismissed_at IS NULL THEN 1 END) as read,
+        COUNT(CASE WHEN read_at IS NULL AND dismissed_at IS NULL THEN 1 END) as unread
+      FROM notifications
+    `);
+    res.json({ success: true, stats: result.rows[0] });
+  } catch (error) {
+    console.error('Error fetching notification stats:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+console.log('🔔 Admin notifications API loaded');
 
 // ==========================================
 // PLAYERS API - Anagrafica Giocatori

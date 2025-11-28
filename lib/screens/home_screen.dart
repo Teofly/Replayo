@@ -7,12 +7,14 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import '../config/app_theme.dart';
+import '../services/notification_service.dart';
 import '../services/user_auth_service.dart';
 import 'booking_screen.dart';
 import 'login_screen.dart';
 import 'match_access_screen.dart';
 import 'my_bookings_screen.dart';
 import 'my_videos_screen.dart';
+import 'notifications_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -23,8 +25,10 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final UserAuthService _authService = UserAuthService();
+  final NotificationService _notificationService = NotificationService();
   bool _isLoggedIn = false;
   String? _userName;
+  int _unreadNotificationCount = 0;
 
   @override
   void initState() {
@@ -49,6 +53,22 @@ class _HomeScreenState extends State<HomeScreen> {
       _isLoggedIn = _authService.isLoggedIn;
       _userName = _authService.userName;
     });
+    // Fetch notifications when user logs in
+    if (_isLoggedIn) {
+      _fetchNotifications();
+    }
+  }
+
+  Future<void> _fetchNotifications() async {
+    try {
+      // Use fetchNotificationsAndUpdateBadge to also update the app icon badge
+      final notifications = await _notificationService.fetchNotificationsAndUpdateBadge();
+      setState(() {
+        _unreadNotificationCount = notifications.where((n) => n['read_at'] == null).length;
+      });
+    } catch (e) {
+      debugPrint('Error fetching notifications: $e');
+    }
   }
 
   @override
@@ -135,6 +155,11 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           if (_isLoggedIn && _authService.isAdmin)
                             const SizedBox(width: 12),
+                          // Notifications button (only for logged-in users)
+                          if (_isLoggedIn)
+                            _buildNotificationButton(context),
+                          if (_isLoggedIn)
+                            const SizedBox(width: 12),
                           // Login/User button (top right)
                           _buildUserButtonSmall(context),
                         ],
@@ -150,7 +175,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       context,
                       icon: Icons.event_note,
                       title: 'Le Mie Prenotazioni',
-                      subtitle: 'Visualizza le tue prenotazioni e video',
+                      subtitle: 'Visualizza le tue Prenotazioni, Video e Statistiche',
                       gradient: [AppTheme.neonPurple, AppTheme.neonGreen],
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(builder: (context) => const MyBookingsScreen()),
@@ -777,6 +802,57 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
     }
+  }
+
+  Widget _buildNotificationButton(BuildContext context) {
+    return GestureDetector(
+      onTap: () => _showNotificationsSheet(context),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppTheme.darkCard,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppTheme.neonBlue.withOpacity(0.3)),
+            ),
+            child: Icon(Icons.notifications_outlined, color: AppTheme.neonBlue, size: 24),
+          ),
+          if (_unreadNotificationCount > 0)
+            Positioned(
+              right: -6,
+              top: -6,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.red,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppTheme.darkBg, width: 2),
+                ),
+                constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                child: Text(
+                  '$_unreadNotificationCount',
+                  style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _showNotificationsSheet(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => NotificationsScreen(
+          onNotificationRead: () {
+            _fetchNotifications();
+          },
+        ),
+      ),
+    );
   }
 
   Future<void> _openBookingPage(BuildContext context) async {

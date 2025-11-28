@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RePlayo Admin Dashboard</title>
     <link rel="icon" type="image/png" href="replayo-logo.png">
-    <link rel="stylesheet" href="style.css?v=20251128a">
+    <link rel="stylesheet" href="style.css?v=20251128f">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
@@ -25,6 +25,7 @@
             </div>
             <nav class="nav">
                 <a href="#" class="nav-item active" data-page="bookings"><span class="nav-icon">📅</span><span class="nav-text">Prenotazioni</span></a>
+                <a href="#" class="nav-item" data-page="notifications"><span class="nav-icon">🔔</span><span class="nav-text">Notifiche</span></a>
                 <a href="#" class="nav-item" data-page="users"><span class="nav-icon">👥</span><span class="nav-text">Utenti</span></a>
                 <a href="#" class="nav-item" data-page="courts"><span class="nav-icon">🏟️</span><span class="nav-text">Campi</span></a>
                 <a href="#" class="nav-item" data-page="matches"><span class="nav-icon">📹</span><span class="nav-text">Videos</span></a>
@@ -133,6 +134,46 @@
 
                         <!-- Users Cards List -->
                         <div id="users-list">
+                            <p style="color: var(--text-secondary); text-align: center; padding: 2rem;">Caricamento...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Notifications Page -->
+                <div id="page-notifications" class="page">
+                    <div class="section">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+                            <h3 style="margin-bottom: 0;">Notifiche Inviate</h3>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button class="btn btn-secondary" onclick="loadAllNotifications()">🔄 Aggiorna</button>
+                                <button class="btn btn-primary" onclick="openSendNotificationModal()">📨 Invia Notifica</button>
+                            </div>
+                        </div>
+
+                        <!-- Stats -->
+                        <div class="users-stats-row" style="display: flex; gap: 1.5rem; margin-bottom: 1rem; flex-wrap: wrap;">
+                            <div class="stat-mini"><span class="stat-mini-icon">📬</span> Totale: <strong id="notif-total">-</strong></div>
+                            <div class="stat-mini"><span class="stat-mini-icon">📭</span> Non lette: <strong id="notif-unread">-</strong></div>
+                            <div class="stat-mini"><span class="stat-mini-icon">✅</span> Lette: <strong id="notif-read">-</strong></div>
+                        </div>
+
+                        <!-- Filters -->
+                        <div style="margin-bottom: 1.5rem;">
+                            <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: center;">
+                                <input type="text" id="notif-search" placeholder="Cerca per utente, titolo, messaggio..."
+                                       oninput="filterNotifications()" style="flex: 1; min-width: 300px; max-width: 500px;">
+                                <select id="notif-type-filter" onchange="filterNotifications()" class="form-input" style="width: auto;">
+                                    <option value="">Tutti i tipi</option>
+                                    <option value="booking_confirmed">Conferma prenotazione</option>
+                                    <option value="booking_reminder">Promemoria partita</option>
+                                    <option value="booking_cancelled">Cancellazione</option>
+                                    <option value="custom">Personalizzata</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Notifications List -->
+                        <div id="notifications-list">
                             <p style="color: var(--text-secondary); text-align: center; padding: 2rem;">Caricamento...</p>
                         </div>
                     </div>
@@ -1194,6 +1235,36 @@
         </div>
     </div>
 
-    <script src="app.js?v=20251126f"></script>
+    <!-- Send Notification Modal -->
+    <div id="send-notification-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>📨 Invia Notifica</h3>
+                <button class="modal-close" onclick="closeSendNotificationModal()">&times;</button>
+            </div>
+            <form id="send-notification-form" class="form">
+                <div class="form-group">
+                    <label>Destinatario</label>
+                    <select id="notif-recipient" required class="form-input">
+                        <option value="">Seleziona utente...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Titolo</label>
+                    <input type="text" id="notif-title" required placeholder="Titolo della notifica" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label>Messaggio</label>
+                    <textarea id="notif-message" required placeholder="Scrivi il messaggio..." rows="4" class="form-input"></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeSendNotificationModal()">Annulla</button>
+                    <button type="submit" class="btn btn-primary">Invia Notifica</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="app.js?v=20251128g"></script>
 </body>
 </html>
