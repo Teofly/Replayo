@@ -26,12 +26,34 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
   List<Map<String, dynamic>> _pastBookings = [];
   bool _isLoading = true;
   String? _errorMessage;
+  int _bookingCancelHours = 24; // default, loaded from API
+  bool _isCancelling = false;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _loadPublicConfig();
     _loadBookings();
+  }
+
+  Future<void> _loadPublicConfig() async {
+    try {
+      final response = await http.get(
+        Uri.parse('https://api.teofly.it/api/public/config'),
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['config'] != null) {
+          setState(() {
+            _bookingCancelHours = int.tryParse(data['config']['booking_cancel_hours']?.toString() ?? '24') ?? 24;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('[MyBookingsScreen] Error loading config: $e');
+    }
   }
 
   @override
@@ -71,9 +93,32 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
       debugPrint('My bookings response body: ${response.body}');
 
       if (response.statusCode == 401) {
-        // API non ancora implementata o token non valido
-        // Per ora mostriamo lista vuota invece di errore
-        debugPrint('API my-bookings returns 401 - showing empty list');
+        // Token scaduto - prova a fare refresh
+        debugPrint('API my-bookings returns 401 - trying token refresh');
+        final refreshed = await _authService.refreshAccessToken();
+        if (refreshed) {
+          debugPrint('Token refreshed successfully - retrying request');
+          // Riprova la richiesta con il nuovo token
+          final newToken = _authService.accessToken;
+          final retryResponse = await http.get(
+            Uri.parse('https://api.teofly.it/api/bookings/my-bookings'),
+            headers: {
+              'Authorization': 'Bearer $newToken',
+              'Content-Type': 'application/json',
+            },
+          ).timeout(const Duration(seconds: 10));
+
+          if (retryResponse.statusCode == 200) {
+            final retryData = jsonDecode(retryResponse.body);
+            if (retryData['success'] == true || retryData['bookings'] != null) {
+              final bookings = List<Map<String, dynamic>>.from(retryData['bookings'] ?? []);
+              _categorizeBookings(bookings);
+              return;
+            }
+          }
+        }
+        // Se il refresh fallisce, mostra lista vuota
+        debugPrint('Token refresh failed - showing empty list');
         setState(() {
           _upcomingBookings = [];
           _pastBookings = [];
@@ -105,53 +150,7 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
 
       if (response.statusCode == 200 && (data['success'] == true || data['bookings'] != null)) {
         final bookings = List<Map<String, dynamic>>.from(data['bookings'] ?? []);
-        final now = DateTime.now();
-
-        setState(() {
-          _upcomingBookings = bookings.where((b) {
-            // API returns booking_date, not date
-            final dateStr = (b['booking_date'] ?? b['date'])?.toString().split('T')[0] ?? '';
-            final timeStr = b['start_time']?.toString() ?? '00:00';
-            try {
-              final bookingDateTime = DateTime.parse('$dateStr $timeStr');
-              return bookingDateTime.isAfter(now);
-            } catch (e) {
-              return false;
-            }
-          }).toList();
-
-          _pastBookings = bookings.where((b) {
-            // API returns booking_date, not date
-            final dateStr = (b['booking_date'] ?? b['date'])?.toString().split('T')[0] ?? '';
-            final timeStr = b['start_time']?.toString() ?? '00:00';
-            try {
-              final bookingDateTime = DateTime.parse('$dateStr $timeStr');
-              return bookingDateTime.isBefore(now);
-            } catch (e) {
-              return true;
-            }
-          }).toList();
-
-          // Sort upcoming by date ascending
-          _upcomingBookings.sort((a, b) {
-            final dateStrA = (a['booking_date'] ?? a['date'])?.toString().split('T')[0] ?? '';
-            final dateStrB = (b['booking_date'] ?? b['date'])?.toString().split('T')[0] ?? '';
-            final dateA = DateTime.tryParse('$dateStrA ${a['start_time']}') ?? DateTime.now();
-            final dateB = DateTime.tryParse('$dateStrB ${b['start_time']}') ?? DateTime.now();
-            return dateA.compareTo(dateB);
-          });
-
-          // Sort past by date descending
-          _pastBookings.sort((a, b) {
-            final dateStrA = (a['booking_date'] ?? a['date'])?.toString().split('T')[0] ?? '';
-            final dateStrB = (b['booking_date'] ?? b['date'])?.toString().split('T')[0] ?? '';
-            final dateA = DateTime.tryParse('$dateStrA ${a['start_time']}') ?? DateTime.now();
-            final dateB = DateTime.tryParse('$dateStrB ${b['start_time']}') ?? DateTime.now();
-            return dateB.compareTo(dateA);
-          });
-
-          _isLoading = false;
-        });
+        _categorizeBookings(bookings);
       } else {
         setState(() {
           _errorMessage = data['message'] ?? 'Errore nel caricamento prenotazioni';
@@ -164,6 +163,54 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
         _isLoading = false;
       });
     }
+  }
+
+  void _categorizeBookings(List<Map<String, dynamic>> bookings) {
+    final now = DateTime.now();
+
+    setState(() {
+      _upcomingBookings = bookings.where((b) {
+        final dateStr = (b['booking_date'] ?? b['date'])?.toString().split('T')[0] ?? '';
+        final timeStr = b['start_time']?.toString() ?? '00:00';
+        try {
+          final bookingDateTime = DateTime.parse('$dateStr $timeStr');
+          return bookingDateTime.isAfter(now);
+        } catch (e) {
+          return false;
+        }
+      }).toList();
+
+      _pastBookings = bookings.where((b) {
+        final dateStr = (b['booking_date'] ?? b['date'])?.toString().split('T')[0] ?? '';
+        final timeStr = b['start_time']?.toString() ?? '00:00';
+        try {
+          final bookingDateTime = DateTime.parse('$dateStr $timeStr');
+          return bookingDateTime.isBefore(now);
+        } catch (e) {
+          return true;
+        }
+      }).toList();
+
+      // Sort upcoming by date ascending
+      _upcomingBookings.sort((a, b) {
+        final dateStrA = (a['booking_date'] ?? a['date'])?.toString().split('T')[0] ?? '';
+        final dateStrB = (b['booking_date'] ?? b['date'])?.toString().split('T')[0] ?? '';
+        final dateA = DateTime.tryParse('$dateStrA ${a['start_time']}') ?? DateTime.now();
+        final dateB = DateTime.tryParse('$dateStrB ${b['start_time']}') ?? DateTime.now();
+        return dateA.compareTo(dateB);
+      });
+
+      // Sort past by date descending
+      _pastBookings.sort((a, b) {
+        final dateStrA = (a['booking_date'] ?? a['date'])?.toString().split('T')[0] ?? '';
+        final dateStrB = (b['booking_date'] ?? b['date'])?.toString().split('T')[0] ?? '';
+        final dateA = DateTime.tryParse('$dateStrA ${a['start_time']}') ?? DateTime.now();
+        final dateB = DateTime.tryParse('$dateStrB ${b['start_time']}') ?? DateTime.now();
+        return dateB.compareTo(dateA);
+      });
+
+      _isLoading = false;
+    });
   }
 
   SportType _getSportType(String? sport) {
@@ -211,6 +258,124 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
         builder: (context) => MatchVideosScreen(match: match),
       ),
     );
+  }
+
+  bool _canCancelBooking(Map<String, dynamic> booking) {
+    final status = booking['status']?.toString().toLowerCase() ?? '';
+    if (status == 'cancelled' || status == 'completed') return false;
+
+    final dateStr = (booking['booking_date'] ?? booking['date'])?.toString().split('T')[0] ?? '';
+    final timeStr = booking['start_time']?.toString() ?? '00:00';
+
+    try {
+      final bookingDateTime = DateTime.parse('$dateStr $timeStr');
+      final now = DateTime.now();
+      final hoursUntilBooking = bookingDateTime.difference(now).inHours;
+      return hoursUntilBooking >= _bookingCancelHours;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  String _getCancelBlockedReason(Map<String, dynamic> booking) {
+    final dateStr = (booking['booking_date'] ?? booking['date'])?.toString().split('T')[0] ?? '';
+    final timeStr = booking['start_time']?.toString() ?? '00:00';
+
+    try {
+      final bookingDateTime = DateTime.parse('$dateStr $timeStr');
+      final now = DateTime.now();
+      final hoursUntilBooking = bookingDateTime.difference(now).inHours;
+      return 'Non puoi cancellare a meno di $_bookingCancelHours ore (mancano $hoursUntilBooking ore)';
+    } catch (e) {
+      return 'Impossibile cancellare';
+    }
+  }
+
+  Future<void> _cancelBooking(Map<String, dynamic> booking) async {
+    final bookingId = booking['id']?.toString() ?? '';
+    if (bookingId.isEmpty) return;
+
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.darkCard,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: Colors.redAccent.withOpacity(0.5)),
+        ),
+        title: Text(
+          'Annulla Prenotazione',
+          style: GoogleFonts.orbitron(color: Colors.redAccent, fontSize: 18),
+        ),
+        content: Text(
+          'Sei sicuro di voler annullare questa prenotazione?',
+          style: GoogleFonts.rajdhani(color: Colors.white70, fontSize: 16),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('No', style: GoogleFonts.rajdhani(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              foregroundColor: Colors.white,
+            ),
+            child: Text('Sì, Annulla', style: GoogleFonts.rajdhani(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _isCancelling = true);
+
+    try {
+      final token = _authService.accessToken;
+      if (token == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Devi effettuare il login'), backgroundColor: Colors.redAccent),
+        );
+        return;
+      }
+
+      final response = await http.put(
+        Uri.parse('https://api.teofly.it/api/bookings/$bookingId/user-cancel'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200 && data['success'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Prenotazione annullata con successo'),
+            backgroundColor: AppTheme.neonGreen,
+          ),
+        );
+        // Reload bookings
+        _loadBookings();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(data['error'] ?? 'Errore nella cancellazione'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Errore di connessione'), backgroundColor: Colors.redAccent),
+      );
+    } finally {
+      setState(() => _isCancelling = false);
+    }
   }
 
   Color _getSportColor(String? sport) {
@@ -465,6 +630,7 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
     final endTime = booking['end_time']?.toString() ?? '';
     final status = booking['status']?.toString() ?? '';
     final bookingCode = booking['booking_code']?.toString() ?? booking['id']?.toString() ?? '';
+    final customerName = booking['customer_name']?.toString() ?? '';
 
     String formattedDate = dateStr;
     try {
@@ -595,22 +761,25 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
                     ),
                   ],
                 ),
-                if (bookingCode.isNotEmpty) ...[
+                if (customerName.isNotEmpty) ...[
                   const SizedBox(height: 10),
                   Row(
                     children: [
                       Icon(
-                        Icons.confirmation_number,
+                        Icons.person,
                         color: isUpcoming ? sportColor : Colors.white38,
                         size: 18,
                       ),
                       const SizedBox(width: 10),
-                      Text(
-                        'Codice: $bookingCode',
-                        style: GoogleFonts.rajdhani(
-                          fontSize: 14,
-                          color: isUpcoming ? sportColor : Colors.white38,
-                          fontWeight: FontWeight.w600,
+                      Expanded(
+                        child: Text(
+                          customerName,
+                          style: GoogleFonts.rajdhani(
+                            fontSize: 14,
+                            color: isUpcoming ? sportColor : Colors.white38,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
@@ -641,6 +810,65 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
                         ),
                       ),
                     ),
+                  ),
+                ],
+                // Cancel button - show only for upcoming bookings that can be cancelled
+                if (isUpcoming && status.toLowerCase() != 'cancelled') ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: _canCancelBooking(booking)
+                        ? ElevatedButton.icon(
+                            onPressed: _isCancelling ? null : () => _cancelBooking(booking),
+                            icon: _isCancelling
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                  )
+                                : const Icon(Icons.cancel_outlined, size: 20),
+                            label: Text(
+                              _isCancelling ? 'Annullamento...' : 'Annulla Prenotazione',
+                              style: GoogleFonts.rajdhani(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.redAccent.withOpacity(0.2),
+                              foregroundColor: Colors.redAccent,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                side: BorderSide(color: Colors.redAccent.withOpacity(0.5)),
+                              ),
+                            ),
+                          )
+                        : Tooltip(
+                            message: _getCancelBlockedReason(booking),
+                            child: ElevatedButton.icon(
+                              onPressed: null,
+                              icon: const Icon(Icons.lock_clock, size: 20),
+                              label: Text(
+                                'Annulla Prenotazione',
+                                style: GoogleFonts.rajdhani(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.grey.withOpacity(0.2),
+                                foregroundColor: Colors.grey,
+                                disabledBackgroundColor: Colors.grey.withOpacity(0.1),
+                                disabledForegroundColor: Colors.grey.shade600,
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  side: BorderSide(color: Colors.grey.withOpacity(0.3)),
+                                ),
+                              ),
+                            ),
+                          ),
                   ),
                 ],
               ],

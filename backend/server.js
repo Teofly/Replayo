@@ -66,14 +66,17 @@ function basicAuth(req, res, next) {
     '/auth/reset-password',     // Public: reset password con token
     '/auth/verify-reset-token', // Public: verifica token reset
     '/bookings/my-bookings',    // Public: prenotazioni utente (usa JWT, non Basic)
+    '/public/config',           // Public: configurazioni app (no auth)
   ];
   // Also allow video streaming, download and view endpoints
   // And POST /bookings for user booking requests (will be pending status)
+  // And PUT /bookings/:id/user-cancel for user cancellation (uses JWT)
   if (publicPaths.some(p => req.path.startsWith(p)) ||
       req.path.match(/\/videos\/[^/]+\/stream/) ||
       req.path.match(/\/videos\/[^/]+\/download/) ||
       req.path.match(/\/videos\/[^/]+\/view/) ||
-      (req.method === 'POST' && req.path === '/bookings')) {
+      (req.method === 'POST' && req.path === '/bookings') ||
+      (req.method === 'PUT' && req.path.match(/\/bookings\/[^/]+\/user-cancel/))) {
     return next();
   }
 
@@ -2507,9 +2510,11 @@ app.post('/api/bookings', async (req, res) => {
     const endDate = new Date(`2000-01-01T${end_time}`);
     const duration_minutes = (endDate - startDate) / 60000;
     
-    // Calcola prezzo
-    const total_price = parseFloat(court.price_per_hour) * (duration_minutes / 60);
-    const price_per_player = total_price / (num_players || 4);
+    // Calcola prezzo basato su price_per_player * num_players del campo
+    const courtNumPlayers = parseInt(court.num_players) || 4;
+    const pricePerPlayer = parseFloat(court.price_per_player) || 0;
+    const total_price = pricePerPlayer * courtNumPlayers;
+    const price_per_player = pricePerPlayer;
     
     // Verifica slot libero
     const conflictResult = await pool.query(
@@ -2803,23 +2808,108 @@ app.put('/api/bookings/:id/confirm', async (req, res) => {
   }
 });
 
-// PUT /api/bookings/:id/cancel - Cancella prenotazione
+// PUT /api/bookings/:id/cancel - Cancella prenotazione (admin)
 app.put('/api/bookings/:id/cancel', async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const result = await pool.query(
       `UPDATE bookings SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`,
       [id]
     );
-    
+
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Prenotazione non trovata' });
     }
-    
+
     res.json({ success: true, court: result.rows[0] });
   } catch (error) {
     console.error('Error cancelling booking:', error);
+    res.status(500).json({ error: 'Errore nella cancellazione' });
+  }
+});
+
+// PUT /api/bookings/:id/user-cancel - Cancella prenotazione (utente app - usa JWT)
+app.put('/api/bookings/:id/user-cancel', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verify JWT token
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Token non fornito' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    let decoded;
+    try {
+      decoded = require('jsonwebtoken').verify(token, process.env.JWT_SECRET || 'replayo-jwt-secret-change-in-production-2024');
+    } catch (err) {
+      return res.status(401).json({ error: 'Token non valido o scaduto' });
+    }
+
+    // Get user email from token
+    const userResult = await pool.query('SELECT email FROM users WHERE id = $1', [decoded.userId]);
+    if (userResult.rows.length === 0) {
+      return res.status(401).json({ error: 'Utente non trovato' });
+    }
+    const userEmail = userResult.rows[0].email.toLowerCase();
+
+    // Get booking and verify ownership
+    const bookingResult = await pool.query(
+      `SELECT b.*, c.name as court_name FROM bookings b
+       JOIN courts c ON b.court_id = c.id
+       WHERE b.id = $1`,
+      [id]
+    );
+
+    if (bookingResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Prenotazione non trovata' });
+    }
+
+    const booking = bookingResult.rows[0];
+
+    // Verify user owns this booking (by email)
+    if (booking.customer_email?.toLowerCase() !== userEmail) {
+      return res.status(403).json({ error: 'Non puoi cancellare prenotazioni di altri utenti' });
+    }
+
+    // Check if booking can be cancelled (not already cancelled/completed)
+    if (booking.status === 'cancelled') {
+      return res.status(400).json({ error: 'Prenotazione già cancellata' });
+    }
+    if (booking.status === 'completed') {
+      return res.status(400).json({ error: 'Non puoi cancellare una prenotazione completata' });
+    }
+
+    // Check booking_cancel_hours limit
+    const cancelHours = parseInt(getConfig('booking_cancel_hours', 24));
+    const bookingDateTime = new Date(`${booking.booking_date.toISOString().split('T')[0]}T${booking.start_time}`);
+    const now = new Date();
+    const hoursUntilBooking = (bookingDateTime - now) / (1000 * 60 * 60);
+
+    if (hoursUntilBooking < cancelHours) {
+      return res.status(400).json({
+        error: `Non puoi cancellare una prenotazione a meno di ${cancelHours} ore dall'inizio`,
+        hours_remaining: Math.max(0, Math.floor(hoursUntilBooking))
+      });
+    }
+
+    // Cancel the booking
+    const result = await pool.query(
+      `UPDATE bookings SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`,
+      [id]
+    );
+
+    console.log(`[User Cancel] Booking ${id} cancelled by user ${userEmail}`);
+
+    res.json({
+      success: true,
+      message: 'Prenotazione cancellata con successo',
+      booking: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error user-cancelling booking:', error);
     res.status(500).json({ error: 'Errore nella cancellazione' });
   }
 });
@@ -3695,6 +3785,35 @@ app.post('/api/synology/list-recordings', async (req, res) => {
 });
 
 // ==================== APP CONFIG API ====================
+
+// GET /api/public/config - Config pubbliche per app (no auth required)
+app.get('/api/public/config', async (req, res) => {
+  try {
+    // Solo le config necessarie all'app, senza autenticazione
+    const publicKeys = [
+      'booking_advance_days',
+      'booking_cancel_hours',
+      'club_open_hour',
+      'club_close_hour',
+      'slot_interval_minutes'
+    ];
+
+    const result = await pool.query(
+      'SELECT key, value FROM app_config WHERE key = ANY($1)',
+      [publicKeys]
+    );
+
+    const config = {};
+    result.rows.forEach(row => {
+      config[row.key] = row.value;
+    });
+
+    res.json({ success: true, config });
+  } catch (error) {
+    console.error('Error fetching public config:', error);
+    res.status(500).json({ error: 'Errore nel recupero configurazione' });
+  }
+});
 
 // GET /api/config - Leggi configurazione
 app.get('/api/config', async (req, res) => {

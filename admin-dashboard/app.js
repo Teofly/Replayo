@@ -1641,6 +1641,28 @@ function setupCustomerNameSearch() {
         }
     });
 
+    // Handle blur - add free name as player when leaving the field
+    searchInput.addEventListener('blur', () => {
+        setTimeout(() => {
+            const name = searchInput.value.trim();
+            if (name) {
+                // Check if this name is in cache (registered user)
+                const existingUser = customerSearchCache.find(u => u.name.toLowerCase() === name.toLowerCase());
+                if (existingUser) {
+                    // Already registered user
+                    addPlayerToBooking(existingUser.playerId || existingUser.userId, existingUser.name, true);
+                    updateCustomerAddButton(existingUser.name, true);
+                } else {
+                    // Free name - add as unregistered player
+                    addPlayerToBooking(null, name, false);
+                    updateCustomerAddButton(name, false);
+                }
+            } else {
+                updateCustomerAddButton('', false);
+            }
+        }, 200); // Small delay to allow click on suggestions
+    });
+
     function updateCustomerHighlight() {
         const items = suggestionsDiv.querySelectorAll('.suggestion-item');
         items.forEach((el, idx) => {
@@ -1657,6 +1679,27 @@ function setupCustomerNameSearch() {
         document.getElementById('booking-customer-name').value = user.name || '';
         document.getElementById('booking-customer-email').value = user.email || '';
         document.getElementById('booking-customer-phone').value = user.phone || '';
+
+        // Add customer as first player if not already in list
+        if (user.name) {
+            addPlayerToBooking(user.playerId || user.userId, user.name, user.isRegistered || false);
+        }
+
+        // Update the add-to-registry button visibility
+        updateCustomerAddButton(user.name, user.isRegistered);
+    }
+}
+
+// Update the add-to-registry button for customer name field
+function updateCustomerAddButton(customerName, isRegistered) {
+    const addBtn = document.getElementById('customer-add-btn');
+    if (!addBtn) return;
+
+    if (customerName && !isRegistered) {
+        addBtn.style.display = 'inline-flex';
+        addBtn.onclick = () => openAddPlayerModal(customerName);
+    } else {
+        addBtn.style.display = 'none';
     }
 }
 
@@ -1704,7 +1747,9 @@ function renderSelectedPlayers() {
                      padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.85rem;">
             ${p.name}
             <button type="button" onclick="removePlayerFromBooking('${p.name}')"
-                    style="background: none; border: none; color: inherit; cursor: pointer; font-size: 1rem;">×</button>
+                    style="background: none; border: none; color: inherit; cursor: pointer; font-size: 1rem;" title="Rimuovi">×</button>
+            ${!p.isRegistered ? `<button type="button" onclick="openAddPlayerModal('${p.name.replace(/'/g, "\\'")}')"
+                    style="background: none; border: none; color: var(--accent-primary); cursor: pointer; font-size: 1rem;" title="Aggiungi all'anagrafica">+</button>` : ''}
         </span>
     `).join('');
 }
@@ -5246,6 +5291,28 @@ function openNewUserModal() {
     document.getElementById('user-modal').style.display = 'flex';
 }
 
+// Open modal to add a player from booking form (pre-fill name)
+function openAddPlayerModal(playerName) {
+    // Split name into first and last name
+    const nameParts = playerName.trim().split(' ');
+    const firstName = nameParts[0] || '';
+    const lastName = nameParts.slice(1).join(' ') || '';
+
+    document.getElementById('user-modal-title').textContent = 'Aggiungi Giocatore';
+    document.getElementById('user-edit-id').value = '';
+    document.getElementById('user-edit-type').value = 'new';
+    document.getElementById('user-first-name').value = firstName;
+    document.getElementById('user-last-name').value = lastName;
+    document.getElementById('user-email').value = '';
+    document.getElementById('user-phone').value = '';
+    document.getElementById('user-notes').value = '';
+    document.getElementById('reset-password-btn').style.display = 'none';
+    document.getElementById('user-modal').style.display = 'flex';
+
+    // Store the original player name to update the chip after save
+    window.pendingPlayerName = playerName;
+}
+
 // Edit unified user
 async function editUnifiedUser(playerId, userId) {
     const user = unifiedUsersCache.find(u =>
@@ -6177,3 +6244,21 @@ function updateStatsFilterUI(name) {
         icon.textContent = '✓';
     }
 }
+
+// ==========================================
+// WINDOW RESIZE HANDLER - Auto refresh on resize
+// ==========================================
+let resizeTimeout;
+let initialWidth = window.innerWidth;
+
+window.addEventListener('resize', () => {
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(() => {
+        // Refresh on any width change
+        if (window.innerWidth !== initialWidth) {
+            initialWidth = window.innerWidth;
+            location.reload();
+        }
+    }, 400); // Wait 400ms after user stops resizing
+});
+

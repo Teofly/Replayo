@@ -46,10 +46,37 @@ class _BookingScreenState extends State<BookingScreen> {
   bool _isBooking = false;
   String? _errorMessage;
 
+  // Config from backend
+  int _bookingAdvanceDays = 14; // default, loaded from API
+  int _bookingCancelHours = 24; // default, loaded from API
+
   @override
   void initState() {
     super.initState();
+    _loadPublicConfig();
     _checkLoggedInUser();
+  }
+
+  Future<void> _loadPublicConfig() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/public/config'),
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true && data['config'] != null) {
+          setState(() {
+            _bookingAdvanceDays = int.tryParse(data['config']['booking_advance_days']?.toString() ?? '14') ?? 14;
+            _bookingCancelHours = int.tryParse(data['config']['booking_cancel_hours']?.toString() ?? '24') ?? 24;
+          });
+          debugPrint('[BookingScreen] Config loaded: advance_days=$_bookingAdvanceDays, cancel_hours=$_bookingCancelHours');
+        }
+      }
+    } catch (e) {
+      debugPrint('[BookingScreen] Error loading config: $e');
+      // Keep defaults
+    }
   }
 
   @override
@@ -622,7 +649,7 @@ class _BookingScreenState extends State<BookingScreen> {
               mainAxisSpacing: 10,
               childAspectRatio: 0.85,
             ),
-            itemCount: 14,
+            itemCount: _bookingAdvanceDays,
             itemBuilder: (context, index) {
               final date = DateTime.now().add(Duration(days: index));
               final isSelected = _selectedDate != null &&

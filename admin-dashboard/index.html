@@ -845,7 +845,13 @@
                 <div class="form-row">
                     <div class="form-group" style="position: relative;">
                         <label>Nome Riferimento</label>
-                        <input type="text" id="booking-customer-name" required placeholder="Cerca o inserisci nome..." autocomplete="off">
+                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                            <input type="text" id="booking-customer-name" required placeholder="Cerca o inserisci nome..." autocomplete="off" style="flex: 1;">
+                            <button type="button" id="customer-add-btn" onclick="" title="Aggiungi all'anagrafica"
+                                    style="display: none; background: rgba(0,255,245,0.2); border: 1px solid var(--accent-primary); color: var(--accent-primary);
+                                           border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-size: 1.2rem;
+                                           align-items: center; justify-content: center;">+</button>
+                        </div>
                         <div id="customer-suggestions" class="autocomplete-suggestions"></div>
                     </div>
                     <div class="form-group">
