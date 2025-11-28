@@ -30,6 +30,7 @@
                 <a href="#" class="nav-item" data-page="courts"><span class="nav-icon">🏟️</span><span class="nav-text">Campi</span></a>
                 <a href="#" class="nav-item" data-page="matches"><span class="nav-icon">📹</span><span class="nav-text">Videos</span></a>
                 <a href="#" class="nav-item" data-page="club-images"><span class="nav-icon">🏢</span><span class="nav-text">InfoClub</span></a>
+                <a href="#" class="nav-item" data-page="devices"><span class="nav-icon">📡</span><span class="nav-text">Dispositivi</span></a>
                 <a href="#" class="nav-item" data-page="overview"><span class="nav-icon">📊</span><span class="nav-text">Stato</span></a>
                 <a href="#" class="nav-item" data-page="settings"><span class="nav-icon">⚙️</span><span class="nav-text">Impostazioni</span></a>
             </nav>
@@ -451,6 +452,51 @@
                                 </button>
                                 <span id="highlight-generate-status" style="margin-left: 1rem; color: var(--text-secondary);"></span>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Devices Page (ESP32) -->
+                <div id="page-devices" class="page">
+                    <div class="section">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+                            <h3 style="margin-bottom: 0;">Dispositivi ESP32</h3>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button class="btn btn-secondary" onclick="loadDevices()">🔄 Aggiorna</button>
+                                <button class="btn btn-primary" onclick="openUploadFirmwareModal()">📦 Upload Firmware</button>
+                            </div>
+                        </div>
+
+                        <!-- Stats -->
+                        <div class="devices-stats-row" style="display: flex; gap: 1.5rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
+                            <div class="stat-mini"><span class="stat-mini-icon">📡</span> Totale: <strong id="devices-total">0</strong></div>
+                            <div class="stat-mini"><span class="stat-mini-icon">🟢</span> Online: <strong id="devices-online">0</strong></div>
+                            <div class="stat-mini"><span class="stat-mini-icon">🔴</span> Offline: <strong id="devices-offline">0</strong></div>
+                            <div class="stat-mini"><span class="stat-mini-icon">🏟️</span> Associati: <strong id="devices-assigned">0</strong></div>
+                        </div>
+
+                        <!-- Devices List -->
+                        <div id="devices-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1rem;">
+                            <p style="color: var(--text-secondary); text-align: center; padding: 2rem; grid-column: 1/-1;">Caricamento...</p>
+                        </div>
+                    </div>
+
+                    <!-- Firmware Section -->
+                    <div class="section">
+                        <h3 style="margin-bottom: 1rem;">📦 Firmware Disponibili</h3>
+                        <div id="firmware-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem;">
+                            <p style="color: var(--text-secondary); text-align: center; padding: 2rem; grid-column: 1/-1;">Nessun firmware caricato</p>
+                        </div>
+                    </div>
+
+                    <!-- Button Markers Section -->
+                    <div class="section">
+                        <h3 style="margin-bottom: 1rem;">🎯 Ultimi Markers Pulsante</h3>
+                        <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+                            Qui vengono mostrati gli ultimi marker salvati dai pulsanti ESP32 durante le partite.
+                        </p>
+                        <div id="markers-recent-list">
+                            <p style="color: var(--text-secondary); text-align: center; padding: 2rem;">Nessun marker recente</p>
                         </div>
                     </div>
                 </div>
@@ -1330,6 +1376,90 @@
         </div>
     </div>
 
-    <script src="app.js?v=20251128g"></script>
+    <!-- Device Edit Modal -->
+    <div id="device-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>📡 Configura Dispositivo</h3>
+                <button class="modal-close" onclick="closeDeviceModal()">&times;</button>
+            </div>
+            <form id="device-form" class="form" onsubmit="saveDevice(event)">
+                <input type="hidden" id="device-id">
+                <div class="form-group">
+                    <label>Device ID (MAC)</label>
+                    <input type="text" id="device-mac" class="form-input" disabled>
+                </div>
+                <div class="form-group">
+                    <label>Nome Dispositivo</label>
+                    <input type="text" id="device-name" class="form-input" placeholder="Es. Pulsante Padel 1">
+                </div>
+                <div class="form-group">
+                    <label>Campo Associato</label>
+                    <select id="device-court" class="form-input">
+                        <option value="">-- Nessun campo --</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Firmware</label>
+                    <input type="text" id="device-firmware" class="form-input" disabled>
+                </div>
+                <div class="form-group">
+                    <label>IP Address</label>
+                    <input type="text" id="device-ip" class="form-input" disabled>
+                </div>
+                <div class="form-group">
+                    <label>WiFi SSID</label>
+                    <input type="text" id="device-wifi" class="form-input" disabled>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeDeviceModal()">Annulla</button>
+                    <button type="button" class="btn btn-danger" onclick="deleteDevice()">Elimina</button>
+                    <button type="submit" class="btn btn-primary">Salva</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Upload Firmware Modal -->
+    <div id="firmware-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>📦 Upload Firmware ESP32</h3>
+                <button class="modal-close" onclick="closeFirmwareModal()">&times;</button>
+            </div>
+            <form id="firmware-form" class="form" onsubmit="uploadFirmware(event)">
+                <div class="form-group">
+                    <label>Versione *</label>
+                    <input type="text" id="firmware-version" class="form-input" placeholder="Es. 1.0.0" required>
+                </div>
+                <div class="form-group">
+                    <label>Note Release</label>
+                    <textarea id="firmware-notes" class="form-input" rows="3" placeholder="Descrizione delle modifiche..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label>File Firmware (.bin) *</label>
+                    <input type="file" id="firmware-file" class="form-input" accept=".bin" required>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="firmware-latest" checked>
+                        Imposta come ultimo firmware (per OTA automatico)
+                    </label>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeFirmwareModal()">Annulla</button>
+                    <button type="submit" class="btn btn-primary" id="firmware-submit-btn">Upload</button>
+                </div>
+            </form>
+            <div id="firmware-upload-progress" style="display: none; margin-top: 1rem;">
+                <div style="background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden;">
+                    <div id="firmware-progress-bar" style="height: 4px; background: var(--accent-primary); width: 0%; transition: width 0.3s;"></div>
+                </div>
+                <p id="firmware-progress-text" style="text-align: center; margin-top: 0.5rem; color: var(--text-secondary);">Uploading...</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js?v=20251128h"></script>
 </body>
 </html>

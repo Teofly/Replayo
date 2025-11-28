@@ -68,6 +68,11 @@ function basicAuth(req, res, next) {
     '/bookings/my-bookings',    // Public: prenotazioni utente (usa JWT, non Basic)
     '/public/config',           // Public: configurazioni app (no auth)
     '/notifications',           // Public: notifiche utente (usa JWT, non Basic)
+    '/devices/register',        // Public: ESP32 registrazione
+    '/devices/heartbeat',       // Public: ESP32 heartbeat
+    '/devices/marker',          // Public: ESP32 marker pulsante
+    '/firmware/latest',         // Public: ESP32 check firmware OTA
+    '/firmware/download/',      // Public: ESP32 download firmware OTA
   ];
   // Also allow video streaming, download and view endpoints
   // And POST /bookings for user booking requests (will be pending status)
@@ -2244,6 +2249,526 @@ app.post('/api/notifications/mark-all-read', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+// ==================== ESP32 DEVICES API ====================
+
+// POST /api/devices/register - ESP32 si registra all'avvio
+app.post('/api/devices/register', async (req, res) => {
+  try {
+    const { device_id, device_name, court_id, firmware_version, ip_address, wifi_ssid } = req.body;
+
+    if (!device_id) {
+      return res.status(400).json({ error: 'device_id richiesto' });
+    }
+
+    // Upsert: inserisce o aggiorna se esiste già
+    const result = await pool.query(
+      `INSERT INTO esp32_devices (device_id, device_name, court_id, firmware_version, ip_address, wifi_ssid, is_online, last_heartbeat, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, true, NOW(), NOW())
+       ON CONFLICT (device_id) DO UPDATE SET
+         device_name = COALESCE($2, esp32_devices.device_name),
+         court_id = COALESCE($3, esp32_devices.court_id),
+         firmware_version = COALESCE($4, esp32_devices.firmware_version),
+         ip_address = $5,
+         wifi_ssid = COALESCE($6, esp32_devices.wifi_ssid),
+         is_online = true,
+         last_heartbeat = NOW(),
+         updated_at = NOW()
+       RETURNING *`,
+      [device_id, device_name, court_id, firmware_version, ip_address, wifi_ssid]
+    );
+
+    console.log(`[ESP32] Device registered: ${device_id} (court: ${court_id})`);
+    res.json({ success: true, device: result.rows[0] });
+  } catch (error) {
+    console.error('Error registering device:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/devices/heartbeat - ESP32 segnala che è online
+app.post('/api/devices/heartbeat', async (req, res) => {
+  try {
+    const { device_id, ip_address } = req.body;
+
+    if (!device_id) {
+      return res.status(400).json({ error: 'device_id richiesto' });
+    }
+
+    const result = await pool.query(
+      `UPDATE esp32_devices SET
+         is_online = true,
+         last_heartbeat = NOW(),
+         ip_address = COALESCE($2, ip_address),
+         updated_at = NOW()
+       WHERE device_id = $1
+       RETURNING id, court_id`,
+      [device_id, ip_address]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Dispositivo non registrato' });
+    }
+
+    // Verifica se c'è un aggiornamento firmware disponibile
+    const firmwareResult = await pool.query(
+      `SELECT version, filename FROM esp32_firmware WHERE is_latest = true LIMIT 1`
+    );
+
+    const currentDevice = await pool.query(
+      `SELECT firmware_version FROM esp32_devices WHERE device_id = $1`,
+      [device_id]
+    );
+
+    let updateAvailable = false;
+    let latestVersion = null;
+
+    if (firmwareResult.rows.length > 0 && currentDevice.rows.length > 0) {
+      latestVersion = firmwareResult.rows[0].version;
+      if (currentDevice.rows[0].firmware_version !== latestVersion) {
+        updateAvailable = true;
+      }
+    }
+
+    res.json({
+      success: true,
+      update_available: updateAvailable,
+      latest_version: latestVersion
+    });
+  } catch (error) {
+    console.error('Error heartbeat:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/devices/marker - Pulsante premuto, salva marker
+app.post('/api/devices/marker', async (req, res) => {
+  try {
+    const { device_id } = req.body;
+
+    if (!device_id) {
+      return res.status(400).json({ error: 'device_id richiesto' });
+    }
+
+    // Trova il dispositivo e il suo campo
+    const deviceResult = await pool.query(
+      `SELECT id, court_id FROM esp32_devices WHERE device_id = $1`,
+      [device_id]
+    );
+
+    if (deviceResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Dispositivo non registrato' });
+    }
+
+    const courtId = deviceResult.rows[0].court_id;
+
+    if (!courtId) {
+      return res.status(400).json({ error: 'Dispositivo non associato a un campo' });
+    }
+
+    // Trova la prenotazione attiva in questo momento su questo campo
+    const now = new Date();
+    const currentTime = now.toTimeString().substring(0, 8);
+    const currentDate = now.toISOString().split('T')[0];
+
+    const bookingResult = await pool.query(
+      `SELECT id FROM bookings
+       WHERE court_id = $1
+         AND booking_date = $2
+         AND start_time <= $3
+         AND end_time > $3
+         AND status = 'confirmed'
+       LIMIT 1`,
+      [courtId, currentDate, currentTime]
+    );
+
+    const bookingId = bookingResult.rows.length > 0 ? bookingResult.rows[0].id : null;
+
+    // Salva il marker
+    const markerResult = await pool.query(
+      `INSERT INTO button_markers (device_id, court_id, marker_time, booking_id)
+       VALUES ($1, $2, NOW(), $3)
+       RETURNING *`,
+      [device_id, courtId, bookingId]
+    );
+
+    console.log(`[ESP32] Marker saved: device=${device_id}, court=${courtId}, booking=${bookingId}`);
+
+    res.json({
+      success: true,
+      marker: markerResult.rows[0],
+      booking_id: bookingId
+    });
+  } catch (error) {
+    console.error('Error saving marker:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/devices - Lista dispositivi (admin)
+app.get('/api/devices', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT d.*, c.name as court_name, c.sport_type,
+              (SELECT COUNT(*) FROM button_markers WHERE device_id = d.device_id) as marker_count
+       FROM esp32_devices d
+       LEFT JOIN courts c ON d.court_id = c.id
+       ORDER BY d.court_id, d.device_name`
+    );
+
+    // Aggiorna stato online/offline basato su ultimo heartbeat (offline se > 2 minuti)
+    const devices = result.rows.map(device => ({
+      ...device,
+      is_online: device.last_heartbeat &&
+                 (new Date() - new Date(device.last_heartbeat)) < 120000 // 2 minuti
+    }));
+
+    res.json({ success: true, devices });
+  } catch (error) {
+    console.error('Error fetching devices:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/devices/:id - Dettaglio singolo dispositivo
+app.get('/api/devices/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(
+      `SELECT d.*, c.name as court_name, c.sport_type
+       FROM esp32_devices d
+       LEFT JOIN courts c ON d.court_id = c.id
+       WHERE d.id = $1 OR d.device_id = $1`,
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Dispositivo non trovato' });
+    }
+
+    // Ultimi 20 marker di questo dispositivo
+    const markersResult = await pool.query(
+      `SELECT bm.*, b.customer_name
+       FROM button_markers bm
+       LEFT JOIN bookings b ON bm.booking_id = b.id
+       WHERE bm.device_id = $1
+       ORDER BY bm.marker_time DESC
+       LIMIT 20`,
+      [result.rows[0].device_id]
+    );
+
+    res.json({
+      success: true,
+      device: result.rows[0],
+      recent_markers: markersResult.rows
+    });
+  } catch (error) {
+    console.error('Error fetching device:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PUT /api/devices/:id - Aggiorna dispositivo (admin)
+app.put('/api/devices/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { device_name, court_id } = req.body;
+
+    const result = await pool.query(
+      `UPDATE esp32_devices SET
+         device_name = COALESCE($2, device_name),
+         court_id = COALESCE($3, court_id),
+         updated_at = NOW()
+       WHERE id = $1 OR device_id = $1
+       RETURNING *`,
+      [id, device_name, court_id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Dispositivo non trovato' });
+    }
+
+    res.json({ success: true, device: result.rows[0] });
+  } catch (error) {
+    console.error('Error updating device:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE /api/devices/:id - Elimina dispositivo (admin)
+app.delete('/api/devices/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Prima elimina i marker associati
+    await pool.query(
+      `DELETE FROM button_markers WHERE device_id = (SELECT device_id FROM esp32_devices WHERE id = $1 OR device_id = $1)`,
+      [id]
+    );
+
+    const result = await pool.query(
+      `DELETE FROM esp32_devices WHERE id = $1 OR device_id = $1 RETURNING *`,
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Dispositivo non trovato' });
+    }
+
+    res.json({ success: true, message: 'Dispositivo eliminato' });
+  } catch (error) {
+    console.error('Error deleting device:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/devices/markers/recent - Ultimi marker (admin) - DEVE essere prima di :court_id
+app.get('/api/devices/markers/recent', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 20;
+
+    const result = await pool.query(`
+      SELECT m.*, c.name as court_name
+      FROM button_markers m
+      LEFT JOIN courts c ON m.court_id = c.id
+      ORDER BY m.marker_time DESC
+      LIMIT $1
+    `, [limit]);
+
+    res.json({ markers: result.rows });
+  } catch (error) {
+    console.error('Error loading recent markers:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/devices/markers/:court_id - Marker di un campo in un intervallo
+app.get('/api/devices/markers/:court_id', async (req, res) => {
+  try {
+    const { court_id } = req.params;
+    const { from, to, booking_id } = req.query;
+
+    let query = `SELECT * FROM button_markers WHERE court_id = $1`;
+    const params = [court_id];
+
+    if (booking_id) {
+      params.push(booking_id);
+      query += ` AND booking_id = $${params.length}`;
+    }
+
+    if (from) {
+      params.push(from);
+      query += ` AND marker_time >= $${params.length}`;
+    }
+
+    if (to) {
+      params.push(to);
+      query += ` AND marker_time <= $${params.length}`;
+    }
+
+    query += ` ORDER BY marker_time ASC`;
+
+    const result = await pool.query(query, params);
+    res.json({ success: true, markers: result.rows });
+  } catch (error) {
+    console.error('Error fetching markers:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==================== ESP32 FIRMWARE OTA API ====================
+
+// Multer config per upload firmware
+const firmwareStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const firmwarePath = path.join(__dirname, 'firmware');
+    if (!fsSync.existsSync(firmwarePath)) {
+      fsSync.mkdirSync(firmwarePath, { recursive: true });
+    }
+    cb(null, firmwarePath);
+  },
+  filename: (req, file, cb) => {
+    const version = req.body.version || 'unknown';
+    cb(null, `firmware_${version}_${Date.now()}.bin`);
+  }
+});
+
+const firmwareUpload = multer({
+  storage: firmwareStorage,
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'application/octet-stream' || file.originalname.endsWith('.bin')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Solo file .bin sono permessi'), false);
+    }
+  },
+  limits: { fileSize: 2 * 1024 * 1024 } // 2MB max
+});
+
+// POST /api/firmware/upload - Upload nuovo firmware (admin)
+app.post('/api/firmware/upload', firmwareUpload.single('firmware'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'File firmware richiesto' });
+    }
+
+    const { version, release_notes } = req.body;
+
+    if (!version) {
+      return res.status(400).json({ error: 'Versione richiesta' });
+    }
+
+    // Calcola checksum MD5
+    const crypto = require('crypto');
+    const fileBuffer = fsSync.readFileSync(req.file.path);
+    const checksum = crypto.createHash('md5').update(fileBuffer).digest('hex');
+
+    // Imposta tutti gli altri firmware come non-latest
+    await pool.query(`UPDATE esp32_firmware SET is_latest = false`);
+
+    // Inserisce nuovo firmware
+    const result = await pool.query(
+      `INSERT INTO esp32_firmware (version, filename, file_path, file_size, checksum, release_notes, is_latest)
+       VALUES ($1, $2, $3, $4, $5, $6, true)
+       RETURNING *`,
+      [version, req.file.filename, req.file.path, req.file.size, checksum, release_notes]
+    );
+
+    console.log(`[Firmware] Uploaded: ${version} (${req.file.filename})`);
+    res.json({ success: true, firmware: result.rows[0] });
+  } catch (error) {
+    console.error('Error uploading firmware:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/firmware - Lista firmware disponibili
+app.get('/api/firmware', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, version, filename, file_size, checksum, release_notes, is_latest, created_at
+       FROM esp32_firmware
+       ORDER BY created_at DESC`
+    );
+
+    res.json({ success: true, firmwares: result.rows });
+  } catch (error) {
+    console.error('Error fetching firmware list:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/firmware/latest - Ultimo firmware (per ESP32 OTA)
+app.get('/api/firmware/latest', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT * FROM esp32_firmware WHERE is_latest = true LIMIT 1`
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Nessun firmware disponibile' });
+    }
+
+    res.json({ success: true, firmware: result.rows[0] });
+  } catch (error) {
+    console.error('Error fetching latest firmware:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/firmware/download/:version - Download firmware (per ESP32 OTA)
+app.get('/api/firmware/download/:version', async (req, res) => {
+  try {
+    const { version } = req.params;
+
+    const result = await pool.query(
+      `SELECT * FROM esp32_firmware WHERE version = $1`,
+      [version]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Firmware non trovato' });
+    }
+
+    const firmware = result.rows[0];
+
+    if (!fsSync.existsSync(firmware.file_path)) {
+      return res.status(404).json({ error: 'File firmware non trovato' });
+    }
+
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename=${firmware.filename}`);
+    res.setHeader('X-Firmware-Version', firmware.version);
+    res.setHeader('X-Firmware-Checksum', firmware.checksum);
+
+    const fileStream = fsSync.createReadStream(firmware.file_path);
+    fileStream.pipe(res);
+  } catch (error) {
+    console.error('Error downloading firmware:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PUT /api/firmware/:id/set-latest - Imposta firmware come latest
+app.put('/api/firmware/:id/set-latest', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Reset all to not latest
+    await pool.query('UPDATE esp32_firmware SET is_latest = false');
+
+    // Set this one as latest
+    const result = await pool.query(
+      'UPDATE esp32_firmware SET is_latest = true WHERE id = $1 RETURNING *',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Firmware non trovato' });
+    }
+
+    res.json({ success: true, firmware: result.rows[0] });
+  } catch (error) {
+    console.error('Error setting firmware as latest:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE /api/firmware/:id - Elimina firmware
+app.delete('/api/firmware/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(
+      'SELECT * FROM esp32_firmware WHERE id = $1',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Firmware non trovato' });
+    }
+
+    const firmware = result.rows[0];
+
+    // Delete file
+    try {
+      await fs.unlink(firmware.file_path);
+    } catch (e) {
+      console.log('Could not delete firmware file:', e.message);
+    }
+
+    // Delete from DB
+    await pool.query('DELETE FROM esp32_firmware WHERE id = $1', [id]);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting firmware:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+console.log('🎮 ESP32 Devices API loaded');
 
 // Start server
 app.listen(PORT, () => {

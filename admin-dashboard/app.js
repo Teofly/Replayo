@@ -211,7 +211,8 @@ function navigateTo(page) {
         'storage': 'Storage',
         'test': 'Test',
         'club-images': 'InfoClub',
-        'settings': 'Impostazioni'
+        'settings': 'Impostazioni',
+        'devices': 'Dispositivi ESP32'
     };
     document.getElementById('page-title').textContent = pageTitles[page] || page;
 
@@ -236,6 +237,10 @@ function navigateTo(page) {
     } else if (page === 'club-images') {
         loadClubInfo();
         loadClubImages();
+    } else if (page === 'devices') {
+        loadDevices();
+        loadFirmwareList();
+        loadRecentMarkers();
     }
 }
 
@@ -6874,4 +6879,446 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
+// ==================== ESP32 DEVICES MANAGEMENT ====================
+
+let devicesData = [];
+let firmwareData = [];
+
+// Load devices list
+async function loadDevices() {
+    const container = document.getElementById('devices-list');
+    container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 2rem; grid-column: 1/-1;">Caricamento...</p>';
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/devices`);
+        const data = await response.json();
+
+        devicesData = data.devices || [];
+        renderDevicesList();
+        updateDevicesStats();
+    } catch (error) {
+        console.error('Error loading devices:', error);
+        container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 2rem; grid-column: 1/-1;">Errore nel caricamento dei dispositivi</p>';
+    }
+}
+
+function updateDevicesStats() {
+    const total = devicesData.length;
+    const online = devicesData.filter(d => d.is_online).length;
+    const offline = total - online;
+    const assigned = devicesData.filter(d => d.court_id).length;
+
+    document.getElementById('devices-total').textContent = total;
+    document.getElementById('devices-online').textContent = online;
+    document.getElementById('devices-offline').textContent = offline;
+    document.getElementById('devices-assigned').textContent = assigned;
+}
+
+function renderDevicesList() {
+    const container = document.getElementById('devices-list');
+
+    if (devicesData.length === 0) {
+        container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 2rem; grid-column: 1/-1;">Nessun dispositivo registrato. I dispositivi ESP32 appariranno qui quando si connetteranno.</p>';
+        return;
+    }
+
+    container.innerHTML = devicesData.map(device => {
+        const isOnline = device.is_online;
+        const lastSeen = device.last_heartbeat ? formatTimeAgo(new Date(device.last_heartbeat)) : 'Mai';
+        const courtName = device.court_name || 'Non assegnato';
+
+        return `
+            <div class="device-card" style="background: var(--bg-secondary); border-radius: 12px; padding: 1.25rem; border: 1px solid ${isOnline ? 'rgba(0, 255, 100, 0.3)' : 'rgba(255, 100, 100, 0.2)'};">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
+                    <div>
+                        <h4 style="margin: 0; color: var(--text-primary);">${device.device_name || 'Dispositivo senza nome'}</h4>
+                        <p style="margin: 0.25rem 0 0; font-size: 0.8rem; color: var(--text-secondary); font-family: monospace;">${device.device_id}</p>
+                    </div>
+                    <span style="padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.75rem; font-weight: 600; background: ${isOnline ? 'rgba(0,255,100,0.2)' : 'rgba(255,100,100,0.2)'}; color: ${isOnline ? '#00ff64' : '#ff6464'};">
+                        ${isOnline ? '🟢 Online' : '🔴 Offline'}
+                    </span>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.85rem; margin-bottom: 1rem;">
+                    <div><span style="color: var(--text-secondary);">Campo:</span> <strong>${courtName}</strong></div>
+                    <div><span style="color: var(--text-secondary);">Firmware:</span> <strong>${device.firmware_version || '-'}</strong></div>
+                    <div><span style="color: var(--text-secondary);">IP:</span> <strong>${device.ip_address || '-'}</strong></div>
+                    <div><span style="color: var(--text-secondary);">WiFi:</span> <strong>${device.wifi_ssid || '-'}</strong></div>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 0.75rem; border-top: 1px solid rgba(255,255,255,0.1);">
+                    <span style="font-size: 0.75rem; color: var(--text-secondary);">Ultimo heartbeat: ${lastSeen}</span>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button class="btn btn-secondary" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;" onclick="triggerOtaUpdate('${device.device_id}')" title="Aggiorna firmware">🔄 OTA</button>
+                        <button class="btn btn-secondary" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;" onclick="openDeviceModal(${device.id})">⚙️ Config</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function formatTimeAgo(date) {
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Adesso';
+    if (diffMins < 60) return `${diffMins} min fa`;
+    if (diffHours < 24) return `${diffHours}h fa`;
+    return `${diffDays}g fa`;
+}
+
+// Device modal
+async function openDeviceModal(deviceId) {
+    const device = devicesData.find(d => d.id === deviceId);
+    if (!device) return;
+
+    document.getElementById('device-id').value = device.id;
+    document.getElementById('device-mac').value = device.device_id;
+    document.getElementById('device-name').value = device.device_name || '';
+    document.getElementById('device-firmware').value = device.firmware_version || '-';
+    document.getElementById('device-ip').value = device.ip_address || '-';
+    document.getElementById('device-wifi').value = device.wifi_ssid || '-';
+
+    // Load courts for dropdown
+    const courtSelect = document.getElementById('device-court');
+    courtSelect.innerHTML = '<option value="">-- Nessun campo --</option>';
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/courts`);
+        const courts = await response.json();
+        courts.forEach(court => {
+            const option = document.createElement('option');
+            option.value = court.id;
+            option.textContent = `${court.name} (${court.sport_type})`;
+            if (court.id === device.court_id) option.selected = true;
+            courtSelect.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Error loading courts:', error);
+    }
+
+    document.getElementById('device-modal').style.display = 'flex';
+}
+
+function closeDeviceModal() {
+    document.getElementById('device-modal').style.display = 'none';
+}
+
+async function saveDevice(e) {
+    e.preventDefault();
+
+    const deviceId = document.getElementById('device-id').value;
+    const deviceName = document.getElementById('device-name').value;
+    const courtId = document.getElementById('device-court').value || null;
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/devices/${deviceId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                device_name: deviceName,
+                court_id: courtId
+            })
+        });
+
+        if (!response.ok) throw new Error('Failed to save device');
+
+        closeDeviceModal();
+        await loadDevices();
+        showToast('Dispositivo aggiornato', 'success');
+    } catch (error) {
+        console.error('Error saving device:', error);
+        showToast('Errore nel salvataggio', 'error');
+    }
+}
+
+async function deleteDevice() {
+    const deviceId = document.getElementById('device-id').value;
+    const deviceMac = document.getElementById('device-mac').value;
+
+    showConfirmDialog(
+        'Elimina Dispositivo',
+        `Sei sicuro di voler eliminare il dispositivo ${deviceMac}?`,
+        'Elimina',
+        async () => {
+            try {
+                const response = await apiFetch(`${API_BASE_URL}/devices/${deviceId}`, {
+                    method: 'DELETE'
+                });
+
+                if (!response.ok) throw new Error('Failed to delete device');
+
+                closeDeviceModal();
+                await loadDevices();
+                showToast('Dispositivo eliminato', 'success');
+            } catch (error) {
+                console.error('Error deleting device:', error);
+                showToast('Errore nell\'eliminazione', 'error');
+            }
+        }
+    );
+}
+
+// Trigger OTA update
+async function triggerOtaUpdate(deviceId) {
+    showConfirmDialog(
+        'Aggiornamento OTA',
+        `Inviare comando di aggiornamento firmware al dispositivo ${deviceId}?`,
+        'Aggiorna',
+        async () => {
+            try {
+                const device = devicesData.find(d => d.device_id === deviceId);
+                if (!device) throw new Error('Device not found');
+
+                const response = await apiFetch(`${API_BASE_URL}/devices/${device.id}/ota`, {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showToast('Comando OTA inviato. Il dispositivo si aggiornerà al prossimo heartbeat.', 'success');
+                } else {
+                    showToast(data.error || 'Errore OTA', 'error');
+                }
+            } catch (error) {
+                console.error('Error triggering OTA:', error);
+                showToast('Errore nell\'invio comando OTA', 'error');
+            }
+        }
+    );
+}
+
+// ==================== FIRMWARE MANAGEMENT ====================
+
+async function loadFirmwareList() {
+    const container = document.getElementById('firmware-list');
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/firmware`);
+        const data = await response.json();
+
+        firmwareData = data.firmwares || [];
+        renderFirmwareList();
+    } catch (error) {
+        console.error('Error loading firmware:', error);
+        container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 2rem; grid-column: 1/-1;">Errore nel caricamento firmware</p>';
+    }
+}
+
+function renderFirmwareList() {
+    const container = document.getElementById('firmware-list');
+
+    if (firmwareData.length === 0) {
+        container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 2rem; grid-column: 1/-1;">Nessun firmware caricato. Usa il pulsante "Upload Firmware" per caricare il primo.</p>';
+        return;
+    }
+
+    container.innerHTML = firmwareData.map(fw => {
+        const date = new Date(fw.created_at).toLocaleDateString('it-IT', {
+            day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+        });
+        const sizeKb = fw.file_size ? Math.round(fw.file_size / 1024) : '-';
+
+        return `
+            <div class="firmware-card" style="background: var(--bg-secondary); border-radius: 12px; padding: 1.25rem; border: 1px solid ${fw.is_latest ? 'rgba(0, 217, 255, 0.3)' : 'rgba(255,255,255,0.1)'};">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem;">
+                    <div>
+                        <h4 style="margin: 0; color: var(--text-primary);">v${fw.version}</h4>
+                        <p style="margin: 0.25rem 0 0; font-size: 0.75rem; color: var(--text-secondary);">${fw.filename}</p>
+                    </div>
+                    ${fw.is_latest ? '<span style="padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.7rem; background: rgba(0,217,255,0.2); color: var(--accent-primary);">LATEST</span>' : ''}
+                </div>
+
+                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
+                    <div>Dimensione: ${sizeKb} KB</div>
+                    <div>Caricato: ${date}</div>
+                </div>
+
+                ${fw.release_notes ? `<p style="font-size: 0.8rem; color: var(--text-secondary); margin: 0; padding: 0.5rem; background: rgba(0,0,0,0.2); border-radius: 4px;">${fw.release_notes}</p>` : ''}
+
+                <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem;">
+                    ${!fw.is_latest ? `<button class="btn btn-secondary" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;" onclick="setFirmwareAsLatest(${fw.id})">Imposta come Latest</button>` : ''}
+                    <button class="btn btn-danger" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;" onclick="deleteFirmware(${fw.id})">Elimina</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function openUploadFirmwareModal() {
+    document.getElementById('firmware-version').value = '';
+    document.getElementById('firmware-notes').value = '';
+    document.getElementById('firmware-file').value = '';
+    document.getElementById('firmware-latest').checked = true;
+    document.getElementById('firmware-upload-progress').style.display = 'none';
+    document.getElementById('firmware-submit-btn').disabled = false;
+    document.getElementById('firmware-modal').style.display = 'flex';
+}
+
+function closeFirmwareModal() {
+    document.getElementById('firmware-modal').style.display = 'none';
+}
+
+async function uploadFirmware(e) {
+    e.preventDefault();
+
+    const version = document.getElementById('firmware-version').value.trim();
+    const notes = document.getElementById('firmware-notes').value.trim();
+    const fileInput = document.getElementById('firmware-file');
+    const isLatest = document.getElementById('firmware-latest').checked;
+
+    if (!fileInput.files.length) {
+        showToast('Seleziona un file firmware', 'error');
+        return;
+    }
+
+    const file = fileInput.files[0];
+    const formData = new FormData();
+    formData.append('firmware', file);
+    formData.append('version', version);
+    formData.append('release_notes', notes);
+    formData.append('is_latest', isLatest.toString());
+
+    document.getElementById('firmware-submit-btn').disabled = true;
+    document.getElementById('firmware-upload-progress').style.display = 'block';
+    document.getElementById('firmware-progress-text').textContent = 'Uploading...';
+    document.getElementById('firmware-progress-bar').style.width = '0%';
+
+    try {
+        const xhr = new XMLHttpRequest();
+
+        xhr.upload.addEventListener('progress', (e) => {
+            if (e.lengthComputable) {
+                const percent = Math.round((e.loaded / e.total) * 100);
+                document.getElementById('firmware-progress-bar').style.width = percent + '%';
+                document.getElementById('firmware-progress-text').textContent = `Uploading... ${percent}%`;
+            }
+        });
+
+        xhr.onload = async () => {
+            if (xhr.status === 200 || xhr.status === 201) {
+                closeFirmwareModal();
+                await loadFirmwareList();
+                showToast('Firmware caricato con successo', 'success');
+            } else {
+                const error = JSON.parse(xhr.responseText);
+                showToast(error.error || 'Errore upload', 'error');
+                document.getElementById('firmware-submit-btn').disabled = false;
+            }
+        };
+
+        xhr.onerror = () => {
+            showToast('Errore di connessione', 'error');
+            document.getElementById('firmware-submit-btn').disabled = false;
+        };
+
+        xhr.open('POST', `${API_BASE_URL}/firmware/upload`);
+
+        // Add auth header
+        const authHeader = getAuthHeader();
+        if (authHeader.Authorization) {
+            xhr.setRequestHeader('Authorization', authHeader.Authorization);
+        }
+
+        xhr.send(formData);
+    } catch (error) {
+        console.error('Error uploading firmware:', error);
+        showToast('Errore durante l\'upload', 'error');
+        document.getElementById('firmware-submit-btn').disabled = false;
+    }
+}
+
+async function setFirmwareAsLatest(firmwareId) {
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/firmware/${firmwareId}/set-latest`, {
+            method: 'PUT'
+        });
+
+        if (!response.ok) throw new Error('Failed to update firmware');
+
+        await loadFirmwareList();
+        showToast('Firmware impostato come latest', 'success');
+    } catch (error) {
+        console.error('Error setting firmware as latest:', error);
+        showToast('Errore nell\'aggiornamento', 'error');
+    }
+}
+
+async function deleteFirmware(firmwareId) {
+    showConfirmDialog(
+        'Elimina Firmware',
+        'Sei sicuro di voler eliminare questo firmware?',
+        'Elimina',
+        async () => {
+            try {
+                const response = await apiFetch(`${API_BASE_URL}/firmware/${firmwareId}`, {
+                    method: 'DELETE'
+                });
+
+                if (!response.ok) throw new Error('Failed to delete firmware');
+
+                await loadFirmwareList();
+                showToast('Firmware eliminato', 'success');
+            } catch (error) {
+                console.error('Error deleting firmware:', error);
+                showToast('Errore nell\'eliminazione', 'error');
+            }
+        }
+    );
+}
+
+// ==================== BUTTON MARKERS ====================
+
+async function loadRecentMarkers() {
+    const container = document.getElementById('markers-recent-list');
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/devices/markers/recent?limit=20`);
+        const data = await response.json();
+
+        if (!data.markers || data.markers.length === 0) {
+            container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 2rem;">Nessun marker recente</p>';
+            return;
+        }
+
+        container.innerHTML = `
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+                        <th style="text-align: left; padding: 0.75rem; color: var(--text-secondary); font-weight: 500;">Tempo</th>
+                        <th style="text-align: left; padding: 0.75rem; color: var(--text-secondary); font-weight: 500;">Dispositivo</th>
+                        <th style="text-align: left; padding: 0.75rem; color: var(--text-secondary); font-weight: 500;">Campo</th>
+                        <th style="text-align: left; padding: 0.75rem; color: var(--text-secondary); font-weight: 500;">Prenotazione</th>
+                        <th style="text-align: center; padding: 0.75rem; color: var(--text-secondary); font-weight: 500;">Elaborato</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${data.markers.map(m => {
+                        const time = new Date(m.marker_time).toLocaleString('it-IT', {
+                            day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit'
+                        });
+                        return `
+                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                                <td style="padding: 0.75rem; font-size: 0.85rem;">${time}</td>
+                                <td style="padding: 0.75rem; font-size: 0.85rem; font-family: monospace;">${m.device_id}</td>
+                                <td style="padding: 0.75rem; font-size: 0.85rem;">${m.court_name || '-'}</td>
+                                <td style="padding: 0.75rem; font-size: 0.85rem;">${m.booking_id ? `#${m.booking_id.slice(0,8)}...` : '-'}</td>
+                                <td style="padding: 0.75rem; text-align: center;">${m.processed ? '✅' : '⏳'}</td>
+                            </tr>
+                        `;
+                    }).join('')}
+                </tbody>
+            </table>
+        `;
+    } catch (error) {
+        console.error('Error loading markers:', error);
+        container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 2rem;">Errore nel caricamento markers</p>';
+    }
+}
 
