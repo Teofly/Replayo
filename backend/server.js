@@ -120,8 +120,54 @@ pool.connect((err, client, release) => {
       console.log(`☁️  S3 bucket: ${S3_BUCKET}`);
     }
     release();
+    // Carica configurazioni all'avvio
+    loadAppConfig();
   }
 });
+
+// ==================== APP CONFIG HELPER ====================
+// Cache configurazioni in memoria
+let appConfigCache = {};
+
+// Carica tutte le configurazioni dal database
+async function loadAppConfig() {
+  try {
+    const result = await pool.query('SELECT key, value, type FROM app_config');
+    appConfigCache = {};
+    result.rows.forEach(row => {
+      // Converti il valore in base al tipo
+      let value = row.value;
+      if (row.type === 'number') {
+        value = parseFloat(row.value) || 0;
+      } else if (row.type === 'boolean') {
+        value = row.value === 'true';
+      }
+      appConfigCache[row.key] = value;
+    });
+    console.log(`⚙️  Caricate ${Object.keys(appConfigCache).length} configurazioni`);
+  } catch (error) {
+    console.error('Errore caricamento configurazioni:', error.message);
+  }
+}
+
+// Ottieni valore configurazione con default
+function getConfig(key, defaultValue) {
+  if (appConfigCache.hasOwnProperty(key)) {
+    return appConfigCache[key];
+  }
+  return defaultValue;
+}
+
+// Aggiorna cache dopo modifica
+async function updateConfigCache(key, value, type = 'text') {
+  let parsedValue = value;
+  if (type === 'number') {
+    parsedValue = parseFloat(value) || 0;
+  } else if (type === 'boolean') {
+    parsedValue = value === 'true' || value === true;
+  }
+  appConfigCache[key] = parsedValue;
+}
 
 // Multer configuration for file uploads
 const storage = multer.memoryStorage();
@@ -2083,8 +2129,12 @@ app.post('/api/courts', async (req, res) => {
   try {
     const { name, sport_type, description, price_per_hour, default_duration_minutes, has_video_recording } = req.body;
     
-    // Durate default per sport
-    const defaultDurations = { padel: 90, tennis: 60, calcetto: 60 };
+    // Durate default per sport da configurazione
+    const defaultDurations = {
+      padel: getConfig('duration_padel', 90),
+      tennis: getConfig('duration_tennis', 60),
+      calcetto: getConfig('duration_calcetto', 60)
+    };
     const duration = default_duration_minutes || defaultDurations[sport_type] || 60;
     
     const result = await pool.query(
@@ -2164,15 +2214,16 @@ app.get('/api/bookings/availability', async (req, res) => {
       return res.status(400).json({ error: 'Data richiesta' });
     }
 
-    // Orari club fissi
-    const CLUB_OPEN = 8; // 08:00
-    const CLUB_CLOSE = 22; // 22:00
+    // Orari club da configurazione
+    const CLUB_OPEN = getConfig('club_open_hour', 8);
+    const CLUB_CLOSE = getConfig('club_close_hour', 22);
+    const SLOT_INTERVAL = getConfig('slot_interval_minutes', 30);
 
-    // Durate default per sport (minuti)
+    // Durate default per sport da configurazione
     const DURATIONS = {
-      padel: { default: 90, fallback: 60 },
-      tennis: { default: 60, fallback: null },
-      calcetto: { default: 60, fallback: null }
+      padel: { default: getConfig('duration_padel', 90), fallback: getConfig('duration_padel_fallback', 60) },
+      tennis: { default: getConfig('duration_tennis', 60), fallback: null },
+      calcetto: { default: getConfig('duration_calcetto', 60), fallback: null }
     };
 
     // Recupera campi attivi
@@ -2220,8 +2271,8 @@ app.get('/api/bookings/availability', async (req, res) => {
       const openMinutes = CLUB_OPEN * 60;
       const closeMinutes = CLUB_CLOSE * 60;
 
-      // Genera tutti gli slot possibili (ogni 30 minuti)
-      for (let startMin = openMinutes; startMin < closeMinutes; startMin += 30) {
+      // Genera tutti gli slot possibili
+      for (let startMin = openMinutes; startMin < closeMinutes; startMin += SLOT_INTERVAL) {
         const defaultEndMin = startMin + durations.default;
         const fallbackEndMin = durations.fallback ? startMin + durations.fallback : null;
 
@@ -2340,9 +2391,9 @@ app.get('/api/bookings/available-slots', async (req, res) => {
 
     const existingBookings = bookingsResult.rows;
 
-    // Genera slot ogni 30 minuti (base fissa)
+    // Genera slot da configurazione
     const slots = [];
-    const slotInterval = 30; // Slot ogni 30 minuti
+    const slotInterval = getConfig('slot_interval_minutes', 30);
     let currentTime = new Date(`2000-01-01T${openHours.open_time}`);
     const closeTime = new Date(`2000-01-01T${openHours.close_time}`);
 
@@ -2362,7 +2413,7 @@ app.get('/api/bookings/available-slots', async (req, res) => {
         is_available: !isBooked
       });
 
-      // Prossimo slot (ogni 30 minuti)
+      // Prossimo slot
       currentTime = new Date(currentTime.getTime() + slotInterval * 60000);
     }
     
@@ -3672,12 +3723,32 @@ app.put('/api/config/:key', async (req, res) => {
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Configurazione non trovata' });
+      // Prova a inserire se non esiste
+      const insertResult = await pool.query(
+        `INSERT INTO app_config (key, value) VALUES ($1, $2) RETURNING *`,
+        [key, value]
+      );
+      await updateConfigCache(key, value, insertResult.rows[0]?.type || 'text');
+      return res.json({ success: true, config: insertResult.rows[0] });
     }
+
+    // Aggiorna cache in memoria
+    await updateConfigCache(key, value, result.rows[0]?.type || 'text');
     res.json({ success: true, config: result.rows[0] });
   } catch (error) {
     console.error('Error updating config:', error);
     res.status(500).json({ error: 'Errore nell aggiornamento configurazione' });
+  }
+});
+
+// POST /api/config/reload - Ricarica configurazioni
+app.post('/api/config/reload', async (req, res) => {
+  try {
+    await loadAppConfig();
+    res.json({ success: true, message: 'Configurazioni ricaricate', count: Object.keys(appConfigCache).length });
+  } catch (error) {
+    console.error('Error reloading config:', error);
+    res.status(500).json({ error: 'Errore ricaricamento configurazioni' });
   }
 });
 

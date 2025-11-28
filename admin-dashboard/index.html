@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RePlayo Admin Dashboard</title>
     <link rel="icon" type="image/png" href="replayo-logo.png">
-    <link rel="stylesheet" href="style.css?v=20251126g">
+    <link rel="stylesheet" href="style.css?v=20251128a">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
@@ -24,19 +24,20 @@
                 <p>Admin Dashboard</p>
             </div>
             <nav class="nav">
-                <a href="#" class="nav-item active" data-page="bookings">📅 Prenotazioni</a>
-                <a href="#" class="nav-item" data-page="users">👥 Utenti</a>
-                <a href="#" class="nav-item" data-page="courts">🏟️ Campi</a>
-                <a href="#" class="nav-item" data-page="matches">📹 Videos</a>
-                <a href="#" class="nav-item" data-page="club-images">🏢 InfoClub</a>
-                <a href="#" class="nav-item" data-page="overview">📊 Stato</a>
-                <a href="#" class="nav-item" data-page="settings">⚙️ Impostazioni</a>
+                <a href="#" class="nav-item active" data-page="bookings"><span class="nav-icon">📅</span><span class="nav-text">Prenotazioni</span></a>
+                <a href="#" class="nav-item" data-page="users"><span class="nav-icon">👥</span><span class="nav-text">Utenti</span></a>
+                <a href="#" class="nav-item" data-page="courts"><span class="nav-icon">🏟️</span><span class="nav-text">Campi</span></a>
+                <a href="#" class="nav-item" data-page="matches"><span class="nav-icon">📹</span><span class="nav-text">Videos</span></a>
+                <a href="#" class="nav-item" data-page="club-images"><span class="nav-icon">🏢</span><span class="nav-text">InfoClub</span></a>
+                <a href="#" class="nav-item" data-page="overview"><span class="nav-icon">📊</span><span class="nav-text">Stato</span></a>
+                <a href="#" class="nav-item" data-page="settings"><span class="nav-icon">⚙️</span><span class="nav-text">Impostazioni</span></a>
             </nav>
         </aside>
 
         <!-- Main Content -->
         <main class="main-content">
             <header class="header">
+                <button class="sidebar-toggle-btn" id="sidebar-toggle-btn" onclick="toggleSidebar()" title="Nascondi/Mostra menu">◀</button>
                 <h2 id="page-title">Prenotazioni</h2>
                 <div class="header-actions">
                     <span class="api-status" id="api-status">🔴 Checking...</span>
@@ -214,6 +215,138 @@
                         </div>
                         <div id="test-email-results" style="margin-top: 1rem;"></div>
                     </div>
+
+                    <!-- Sezione Orari Club -->
+                    <div class="section">
+                        <h3>🕐 Orari Club</h3>
+                        <p style="color: var(--text-secondary); margin-bottom: 1rem;">Configura gli orari di apertura e gli intervalli delle prenotazioni</p>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="config-club-open">Ora Apertura</label>
+                                <select id="config-club-open" class="form-input" onchange="saveConfig('club_open_hour', this.value)">
+                                    <option value="6">06:00</option>
+                                    <option value="7">07:00</option>
+                                    <option value="8">08:00</option>
+                                    <option value="9">09:00</option>
+                                    <option value="10">10:00</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="config-club-close">Ora Chiusura</label>
+                                <select id="config-club-close" class="form-input" onchange="saveConfig('club_close_hour', this.value)">
+                                    <option value="20">20:00</option>
+                                    <option value="21">21:00</option>
+                                    <option value="22">22:00</option>
+                                    <option value="23">23:00</option>
+                                    <option value="24">00:00</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="config-slot-interval">Intervallo Slot (minuti)</label>
+                                <select id="config-slot-interval" class="form-input" onchange="saveConfig('slot_interval_minutes', this.value)">
+                                    <option value="15">15 minuti</option>
+                                    <option value="30">30 minuti</option>
+                                    <option value="60">60 minuti</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sezione Durate Sport -->
+                    <div class="section">
+                        <h3>⏱️ Durate Default per Sport</h3>
+                        <p style="color: var(--text-secondary); margin-bottom: 1rem;">Imposta la durata predefinita delle partite per ogni sport</p>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="config-duration-padel">Padel (minuti)</label>
+                                <input type="number" id="config-duration-padel" class="form-input" min="30" max="180" step="15" onchange="saveConfig('duration_padel', this.value)">
+                            </div>
+                            <div class="form-group">
+                                <label for="config-duration-padel-fallback">Padel Alternativo (minuti)</label>
+                                <input type="number" id="config-duration-padel-fallback" class="form-input" min="30" max="180" step="15" onchange="saveConfig('duration_padel_fallback', this.value)">
+                            </div>
+                            <div class="form-group">
+                                <label for="config-duration-tennis">Tennis (minuti)</label>
+                                <input type="number" id="config-duration-tennis" class="form-input" min="30" max="180" step="15" onchange="saveConfig('duration_tennis', this.value)">
+                            </div>
+                            <div class="form-group">
+                                <label for="config-duration-calcetto">Calcetto (minuti)</label>
+                                <input type="number" id="config-duration-calcetto" class="form-input" min="30" max="180" step="15" onchange="saveConfig('duration_calcetto', this.value)">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sezione Cron Jobs -->
+                    <div class="section">
+                        <h3>⏰ Automazioni & Cron Jobs</h3>
+                        <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+                            Il cron job esegue automaticamente ogni ora:<br>
+                            <strong>1)</strong> Auto-conferma prenotazioni pending (fino a 2h nel futuro)<br>
+                            <strong>2)</strong> Download video delle partite terminate
+                        </p>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="config-cron-video-enabled">Download Video Automatico</label>
+                                <select id="config-cron-video-enabled" class="form-input" onchange="saveConfig('cron_video_enabled', this.value)">
+                                    <option value="true">Abilitato</option>
+                                    <option value="false">Disabilitato</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="config-cron-video-minute">Minuto Esecuzione (0-59)</label>
+                                <input type="number" id="config-cron-video-minute" class="form-input" min="0" max="59" onchange="saveConfig('cron_video_minute', this.value)">
+                            </div>
+                            <div class="form-group">
+                                <label for="config-cron-timeout">Timeout Cron (minuti)</label>
+                                <input type="number" id="config-cron-timeout" class="form-input" min="1" max="30" onchange="saveConfig('cron_timeout_minutes', this.value)">
+                            </div>
+                            <div class="form-group">
+                                <label for="config-auto-confirm-enabled">Auto-Conferma Prenotazioni</label>
+                                <select id="config-auto-confirm-enabled" class="form-input" onchange="saveConfig('auto_confirm_enabled', this.value)">
+                                    <option value="true">Abilitato</option>
+                                    <option value="false">Disabilitato</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="config-auto-confirm-hours">Ore Prima per Auto-Conferma</label>
+                                <input type="number" id="config-auto-confirm-hours" class="form-input" min="1" max="24" onchange="saveConfig('auto_confirm_hours_before', this.value)">
+                            </div>
+                        </div>
+                        <div style="margin-top: 1rem;">
+                            <button class="btn btn-primary" onclick="runCronManually()">▶️ Esegui Ora</button>
+                        </div>
+                    </div>
+
+                    <!-- Sezione Prenotazioni -->
+                    <div class="section">
+                        <h3>📅 Prenotazioni</h3>
+                        <p style="color: var(--text-secondary); margin-bottom: 1rem;">Configura le regole per le prenotazioni</p>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="config-booking-advance">Giorni Anticipo Max</label>
+                                <input type="number" id="config-booking-advance" class="form-input" min="1" max="90" onchange="saveConfig('booking_advance_days', this.value)">
+                            </div>
+                            <div class="form-group">
+                                <label for="config-booking-cancel">Ore Min per Cancellazione</label>
+                                <input type="number" id="config-booking-cancel" class="form-input" min="0" max="72" onchange="saveConfig('booking_cancel_hours', this.value)">
+                            </div>
+                            <div class="form-group">
+                                <label for="config-booking-reminder">Ore Prima per Reminder</label>
+                                <input type="number" id="config-booking-reminder" class="form-input" min="1" max="72" onchange="saveConfig('booking_reminder_hours', this.value)">
+                            </div>
+                            <div class="form-group">
+                                <label for="config-booking-players">Giocatori Default</label>
+                                <input type="number" id="config-booking-players" class="form-input" min="1" max="22" onchange="saveConfig('booking_default_players', this.value)">
+                            </div>
+                            <div class="form-group">
+                                <label for="config-booking-payment">Richiedi Pagamento Anticipato</label>
+                                <select id="config-booking-payment" class="form-input" onchange="saveConfig('booking_require_payment', this.value)">
+                                    <option value="false">No</option>
+                                    <option value="true">Sì</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Bookings Page -->
@@ -241,8 +374,9 @@
                         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">
                             <div style="display: flex; align-items: center; gap: 10px;">
                                 <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.9rem;" onclick="navigateDay(-1)" title="Giorno precedente">&lt;</button>
+                                <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;" onclick="goToToday()" title="Vai a oggi">Oggi</button>
                                 <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.9rem;" onclick="navigateDay(1)" title="Giorno successivo">&gt;</button>
-                                <h3 style="margin: 0;">Prenotazioni del Giorno: <span id="selected-date-display">-</span></h3>
+                                <h3 style="margin: 0;"><span id="selected-date-display">-</span></h3>
                                 <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;" onclick="refreshDailyBookings()">Aggiorna</button>
                                 <button class="btn btn-primary" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;" onclick="openPlayerBookingsSearch()">🔍 Cerca Prenotazioni</button>
                                 <button class="btn btn-secondary" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;" onclick="openFilterPlayerModal()" id="filter-player-btn">👤 Filtra Giocatore</button>

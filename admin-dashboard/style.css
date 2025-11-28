@@ -8,6 +8,71 @@
     --success: #00ff88;
     --warning: #ffaa00;
     --danger: #ff3366;
+    --sidebar-width: 280px;
+    --sidebar-collapsed-width: 60px;
+}
+
+/* Sidebar Toggle Button */
+.sidebar-toggle-btn {
+    background: var(--bg-card);
+    border: 1px solid rgba(0, 255, 245, 0.3);
+    color: var(--accent-primary);
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    margin-right: 1rem;
+}
+
+.sidebar-toggle-btn:hover {
+    background: var(--accent-primary);
+    color: var(--bg-dark);
+}
+
+/* Sidebar Collapsed State */
+.sidebar.collapsed {
+    width: var(--sidebar-collapsed-width);
+}
+
+.sidebar.collapsed .logo h1,
+.sidebar.collapsed .logo p {
+    display: none;
+}
+
+.sidebar.collapsed .logo {
+    padding: 1rem 0.5rem;
+}
+
+.sidebar.collapsed .logo-img {
+    width: 40px;
+    height: 40px;
+}
+
+.sidebar.collapsed .nav-item {
+    padding: 1rem;
+    justify-content: center;
+    font-size: 1.2rem;
+}
+
+.sidebar.collapsed .nav-item .nav-text {
+    display: none;
+}
+
+.sidebar.collapsed .nav-item .nav-icon {
+    margin-right: 0;
+}
+
+.main-content.expanded {
+    margin-left: var(--sidebar-collapsed-width);
+}
+
+.sidebar-toggle-btn.collapsed {
+    transform: rotate(180deg);
 }
 
 .btn-copy {
@@ -112,13 +177,14 @@ body {
 
 /* Sidebar */
 .sidebar {
-    width: 280px;
+    width: var(--sidebar-width);
     background: var(--bg-card);
     padding: 2rem 0;
     border-right: 1px solid rgba(0, 255, 245, 0.1);
     position: fixed;
     height: 100vh;
     overflow-y: auto;
+    transition: width 0.3s ease;
 }
 
 .logo {
@@ -180,11 +246,23 @@ body {
     border-left: 3px solid var(--accent-primary);
 }
 
+.nav-icon {
+    font-size: 1.2rem;
+    flex-shrink: 0;
+}
+
+.nav-text {
+    white-space: nowrap;
+    overflow: hidden;
+    transition: opacity 0.2s ease;
+}
+
 /* Main Content */
 .main-content {
     flex: 1;
-    margin-left: 280px;
+    margin-left: var(--sidebar-width);
     padding: 2rem;
+    transition: margin-left 0.3s ease;
 }
 
 .header {

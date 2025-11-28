@@ -10,6 +10,31 @@ function escapeAttr(str) {
     return String(str).replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 
+// Sidebar toggle
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const mainContent = document.querySelector('.main-content');
+    const toggleBtn = document.getElementById('sidebar-toggle-btn');
+
+    sidebar.classList.toggle('collapsed');
+    mainContent.classList.toggle('expanded');
+    toggleBtn.classList.toggle('collapsed');
+
+    // Save preference
+    const isCollapsed = sidebar.classList.contains('collapsed');
+    localStorage.setItem('sidebar_collapsed', isCollapsed);
+}
+
+// Restore sidebar state on load
+function restoreSidebarState() {
+    const isCollapsed = localStorage.getItem('sidebar_collapsed') === 'true';
+    if (isCollapsed) {
+        document.getElementById('sidebar')?.classList.add('collapsed');
+        document.querySelector('.main-content')?.classList.add('expanded');
+        document.getElementById('sidebar-toggle-btn')?.classList.add('collapsed');
+    }
+}
+
 // Auth credentials
 let authCredentials = localStorage.getItem('replayo_auth') || null;
 let loginResolve = null;
@@ -87,11 +112,13 @@ let selectedBookingPlayers = []; // Players selected for current booking
 let currentSportFilter = null; // Sport filter for timeline
 
 // Initialize app
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    restoreSidebarState();
     setupLoginForm();
     setupNavigation();
     setupMobileMenu();
     checkAPIStatus();
+    await loadAppConfig(); // Carica configurazioni all'avvio
     navigateTo('bookings');
     setupForms();
     setupModals();
@@ -685,9 +712,11 @@ async function loadMonthBookings() {
         loadCalendarCoverage();
         }
 
-        // Calculate total available minutes per day (all active courts, 8:00-22:00 = 14 hours)
+        // Calculate total available minutes per day (all active courts)
         const activeCourts = courtsCache.filter(c => c.is_active);
-        const hoursPerDay = 14; // 8:00 to 22:00
+        const openHour = parseInt(appConfig.club_open_hour?.value) || 8;
+        const closeHour = parseInt(appConfig.club_close_hour?.value) || 22;
+        const hoursPerDay = closeHour - openHour;
         const totalAvailableMinutes = activeCourts.length * hoursPerDay * 60;
 
         // Group bookings by date and calculate coverage
@@ -753,6 +782,14 @@ function refreshDailyBookings() {
     if (selectedDate) {
         renderDailyTimeline(selectedDate);
     }
+}
+
+function goToToday() {
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const d = String(today.getDate()).padStart(2, '0');
+    selectDate(`${y}-${m}-${d}`);
 }
 
 function navigateDay(direction) {
@@ -827,18 +864,18 @@ async function renderDailyTimeline(dateStr) {
         loadCalendarCoverage();
         }
 
-        // Build timeline from 8:00 to 22:00
-        const startHour = 8;
-        const endHour = 22;
+        // Build timeline from configured opening hours
+        const startHour = parseInt(appConfig.club_open_hour?.value) || 8;
+        const endHour = parseInt(appConfig.club_close_hour?.value) || 22;
         const hoursCount = endHour - startHour;
-        const slotResolution = 30; // 30-min slots
+        const slotResolution = parseInt(appConfig.slot_interval_minutes?.value) || 30;
         const totalSlots = hoursCount * (60 / slotResolution);
 
-        // Header allineato con 28 slot (ogni ora = 2 slot da 30min)
+        // Header dinamico basato su ore configurate
         let html = `
             <div class="timeline-header">
                 <div class="timeline-court-label">Campo</div>
-                <div class="timeline-hours-container">
+                <div class="timeline-hours-container" style="grid-template-columns: repeat(${hoursCount}, 1fr);">
                     ${Array.from({length: hoursCount}, (_, i) =>
                         `<div class="timeline-hour-label">${startHour + i}:00</div>`
                     ).join('')}
@@ -852,7 +889,7 @@ async function renderDailyTimeline(dateStr) {
 
             html += `<div class="timeline-row" data-sport="${court.sport_type || ''}">`;
             html += `<div class="timeline-court-name">${court.name}</div>`;
-            html += `<div class="timeline-slots-container">`;
+            html += `<div class="timeline-slots-container" style="grid-template-columns: repeat(${totalSlots}, minmax(0, 1fr));">`;
 
             // Track which slots are occupied
             const occupiedSlots = new Set();
@@ -3599,11 +3636,20 @@ function selectStatsPlayerFilter(index) {
 
     console.log('Stats player filter set:', statsPlayerFilter);
 
-    // Update UI
+    // Update UI stats
     document.getElementById('stats-player-filter-label').textContent = name;
     document.getElementById('stats-player-filter-label').style.display = 'inline';
     document.getElementById('stats-player-filter-clear').style.display = 'inline';
     document.getElementById('stats-player-filter-icon').textContent = '✓';
+
+    // Sincronizza con filtro timeline
+    currentPlayerFilter = {
+        id: user.userId || user.id,
+        name: name,
+        customerName: name.toLowerCase()
+    };
+    updateTimelineFilterUI(name);
+    applyPlayerFilter();
 
     closeStatsPlayerFilterModal();
     loadBookingStats();
@@ -3614,6 +3660,10 @@ function clearStatsPlayerFilter() {
     document.getElementById('stats-player-filter-label').style.display = 'none';
     document.getElementById('stats-player-filter-clear').style.display = 'none';
     document.getElementById('stats-player-filter-icon').textContent = '👤';
+
+    // Sincronizza: pulisci anche filtro timeline (skipStatsSync=true per evitare loop)
+    clearPlayerFilter(true);
+
     loadBookingStats();
 }
 
@@ -4845,7 +4895,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 setTimeout(loadClubImages, 100);
             }
             if (item.dataset.page === 'settings') {
-                setTimeout(loadSmtpSettings, 100);
+                setTimeout(() => { loadSmtpSettings(); loadAppConfig(); }, 100);
             }
             if (item.dataset.page === 'users') {
                 setTimeout(() => { loadUsers(); loadUsersStats(); }, 100);
@@ -4955,14 +5005,54 @@ function renderUnifiedUsersList() {
                     ${user.notes ? `<p class="user-notes">${user.notes}</p>` : ''}
                 </div>
                 <div class="user-actions">
-                    <button class="btn btn-primary btn-small" onclick="editUnifiedUser('${escapeAttr(user.playerId)}', '${escapeAttr(user.userId)}')">Modifica</button>
                     ${adminToggleBtn}
+                    <button class="btn btn-secondary btn-small" onclick="viewUserStats('${escapeAttr(user.userId || user.playerId)}', '${escapeAttr(user.name)}')">📊 Statistiche</button>
+                    <button class="btn btn-primary btn-small" onclick="editUnifiedUser('${escapeAttr(user.playerId)}', '${escapeAttr(user.userId)}')">Modifica</button>
                     ${user.isRegistered && !user.emailVerified ? `<button class="btn btn-success btn-small" onclick="verifyUserManually('${escapeAttr(user.userId)}')">Verifica</button>` : ''}
                     <button class="btn btn-danger btn-small" onclick="deleteUnifiedUser('${escapeAttr(user.playerId)}', '${escapeAttr(user.userId)}', '${escapeAttr(user.name)}')">Elimina</button>
                 </div>
             </div>
         `;
     }).join('');
+}
+
+// View user stats - navigates to bookings page with player filter applied
+function viewUserStats(userId, userName) {
+    // Set stats player filter
+    statsPlayerFilter = {
+        userId: userId,
+        name: userName,
+        customerName: userName
+    };
+
+    // Set timeline player filter too
+    currentPlayerFilter = {
+        id: userId,
+        name: userName,
+        customerName: userName.toLowerCase()
+    };
+
+    // Navigate to bookings page
+    navigateTo('bookings');
+
+    // Update UI for both filters after navigation
+    setTimeout(() => {
+        // Update stats filter UI
+        updateStatsFilterUI(userName);
+
+        // Update timeline filter UI
+        updateTimelineFilterUI(userName);
+        applyPlayerFilter();
+
+        // Load stats with filter
+        loadBookingStats();
+
+        // Scroll to statistics section
+        const statsSection = document.querySelector('#page-bookings .section:nth-child(3)');
+        if (statsSection) {
+            statsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }, 100);
 }
 
 // Get initials from name
@@ -5523,6 +5613,84 @@ function updatePlayersAutocompleteSelection(items) {
 }
 
 
+// ==================== APP CONFIG SETTINGS ====================
+
+let appConfig = {};
+
+async function loadAppConfig() {
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/config`);
+        const data = await response.json();
+
+        if (data.success && data.config) {
+            appConfig = data.config;
+            populateConfigFields();
+        }
+    } catch (error) {
+        console.error('Error loading app config:', error);
+    }
+}
+
+function populateConfigFields() {
+    // Orari Club
+    setSelectValue('config-club-open', appConfig.club_open_hour?.value || '8');
+    setSelectValue('config-club-close', appConfig.club_close_hour?.value || '22');
+    setSelectValue('config-slot-interval', appConfig.slot_interval_minutes?.value || '30');
+
+    // Durate Sport
+    setInputValue('config-duration-padel', appConfig.duration_padel?.value || '90');
+    setInputValue('config-duration-padel-fallback', appConfig.duration_padel_fallback?.value || '60');
+    setInputValue('config-duration-tennis', appConfig.duration_tennis?.value || '60');
+    setInputValue('config-duration-calcetto', appConfig.duration_calcetto?.value || '60');
+
+    // Cron Jobs
+    setSelectValue('config-cron-video-enabled', appConfig.cron_video_enabled?.value || 'true');
+    setInputValue('config-cron-video-minute', appConfig.cron_video_minute?.value || '55');
+    setInputValue('config-cron-timeout', appConfig.cron_timeout_minutes?.value || '5');
+    setSelectValue('config-auto-confirm-enabled', appConfig.auto_confirm_enabled?.value || 'true');
+    setInputValue('config-auto-confirm-hours', appConfig.auto_confirm_hours_before?.value || '2');
+
+    // Prenotazioni
+    setInputValue('config-booking-advance', appConfig.booking_advance_days?.value || '14');
+    setInputValue('config-booking-cancel', appConfig.booking_cancel_hours?.value || '24');
+    setInputValue('config-booking-reminder', appConfig.booking_reminder_hours?.value || '24');
+    setInputValue('config-booking-players', appConfig.booking_default_players?.value || '4');
+    setSelectValue('config-booking-payment', appConfig.booking_require_payment?.value || 'false');
+}
+
+function setSelectValue(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.value = value;
+}
+
+function setInputValue(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.value = value;
+}
+
+async function saveConfig(key, value) {
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/config/${key}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ value: String(value) })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showNotification(`Configurazione "${key}" salvata`, 'success');
+            // Aggiorna cache locale
+            if (!appConfig[key]) appConfig[key] = {};
+            appConfig[key].value = String(value);
+        } else {
+            showNotification('Errore: ' + (data.error || 'Salvataggio fallito'), 'error');
+        }
+    } catch (error) {
+        showNotification('Errore: ' + error.message, 'error');
+    }
+}
+
 // ==================== SMTP SETTINGS ====================
 
 async function loadSmtpSettings() {
@@ -5903,8 +6071,19 @@ function selectPlayerForFilter(index) {
     filterBtn.classList.add('btn-primary');
     clearBtn.style.display = 'inline-block';
 
+    // Sincronizza con filtro statistiche
+    statsPlayerFilter = {
+        userId: user.id,
+        name: name,
+        customerName: name
+    };
+    updateStatsFilterUI(name);
+
     // Apply filter to current timeline
     applyPlayerFilter();
+
+    // Ricarica statistiche con il nuovo filtro
+    loadBookingStats();
 }
 
 function applyPlayerFilter() {
@@ -5930,17 +6109,21 @@ function applyPlayerFilter() {
     });
 }
 
-function clearPlayerFilter() {
+function clearPlayerFilter(skipStatsSync = false) {
     currentPlayerFilter = null;
 
     // Reset UI
     const filterBtn = document.getElementById('filter-player-btn');
     const clearBtn = document.getElementById('clear-filter-btn');
 
-    filterBtn.innerHTML = '👤 Filtra Giocatore';
-    filterBtn.classList.remove('btn-primary');
-    filterBtn.classList.add('btn-secondary');
-    clearBtn.style.display = 'none';
+    if (filterBtn) {
+        filterBtn.innerHTML = '👤 Filtra Giocatore';
+        filterBtn.classList.remove('btn-primary');
+        filterBtn.classList.add('btn-secondary');
+    }
+    if (clearBtn) {
+        clearBtn.style.display = 'none';
+    }
 
     // Remove filter from timeline - restore all booking bars
     const bookingBars = document.querySelectorAll('.timeline-booking-bar');
@@ -5948,4 +6131,49 @@ function clearPlayerFilter() {
         bar.style.opacity = '1';
         bar.style.filter = 'none';
     });
+
+    // Sincronizza: pulisci anche filtro stats (evita loop)
+    if (!skipStatsSync && statsPlayerFilter) {
+        statsPlayerFilter = null;
+        const label = document.getElementById('stats-player-filter-label');
+        const statsClearBtn = document.getElementById('stats-player-filter-clear');
+        const icon = document.getElementById('stats-player-filter-icon');
+        if (label) label.style.display = 'none';
+        if (statsClearBtn) statsClearBtn.style.display = 'none';
+        if (icon) icon.textContent = '👤';
+
+        // Ricarica statistiche senza filtro
+        loadBookingStats();
+    }
+}
+
+// Helper per aggiornare UI filtro timeline senza triggerare eventi
+function updateTimelineFilterUI(name) {
+    const filterBtn = document.getElementById('filter-player-btn');
+    const clearBtn = document.getElementById('clear-filter-btn');
+    if (filterBtn) {
+        filterBtn.innerHTML = `👤 ${name}`;
+        filterBtn.classList.remove('btn-secondary');
+        filterBtn.classList.add('btn-primary');
+    }
+    if (clearBtn) {
+        clearBtn.style.display = 'inline-block';
+    }
+}
+
+// Helper per aggiornare UI filtro stats senza triggerare eventi
+function updateStatsFilterUI(name) {
+    const label = document.getElementById('stats-player-filter-label');
+    const clearBtn = document.getElementById('stats-player-filter-clear');
+    const icon = document.getElementById('stats-player-filter-icon');
+    if (label) {
+        label.textContent = name;
+        label.style.display = 'inline';
+    }
+    if (clearBtn) {
+        clearBtn.style.display = 'inline';
+    }
+    if (icon) {
+        icon.textContent = '✓';
+    }
 }
