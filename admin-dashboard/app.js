@@ -29,16 +29,18 @@ function escapeHtml(str) {
 // Sidebar toggle
 function toggleSidebar() {
     const sidebar = document.getElementById('sidebar');
-    const mainContent = document.querySelector('.main-content');
-    const toggleBtn = document.getElementById('sidebar-toggle-btn');
-
-    sidebar.classList.toggle('collapsed');
-    mainContent.classList.toggle('expanded');
-    toggleBtn.classList.toggle('collapsed');
-
-    // Save preference
     const isCollapsed = sidebar.classList.contains('collapsed');
-    localStorage.setItem('sidebar_collapsed', isCollapsed);
+
+    // Save NEW state (opposite of current)
+    localStorage.setItem('sidebar_collapsed', !isCollapsed);
+
+    // Save selected date if any
+    if (selectedDate) {
+        localStorage.setItem('sidebar_toggle_date', selectedDate);
+    }
+
+    // Refresh page to apply new layout
+    location.reload();
 }
 
 // Restore sidebar state on load
@@ -48,6 +50,18 @@ function restoreSidebarState() {
         document.getElementById('sidebar')?.classList.add('collapsed');
         document.querySelector('.main-content')?.classList.add('expanded');
         document.getElementById('sidebar-toggle-btn')?.classList.add('collapsed');
+    }
+
+    // Restore selected date if saved from toggle
+    const savedDate = localStorage.getItem('sidebar_toggle_date');
+    if (savedDate) {
+        // Delay to ensure page is loaded, then remove flag
+        setTimeout(() => {
+            localStorage.removeItem('sidebar_toggle_date');
+            if (typeof selectDate === 'function') {
+                selectDate(savedDate);
+            }
+        }, 100);
     }
 }
 
@@ -225,6 +239,10 @@ function navigateTo(page) {
         loadStorageInfo();
     } else if (page === 'bookings') {
         loadCourts();
+        // Reset to today only if NOT coming from sidebar toggle
+        if (!localStorage.getItem('sidebar_toggle_date')) {
+            selectedDate = null;
+        }
         renderCalendar(); // Renderizza calendario e seleziona oggi automaticamente
     } else if (page === 'test') {
         loadMatchesForTest();
@@ -3781,6 +3799,15 @@ function renderStatsSummary(summary) {
     const bookings = formatNumber(summary.total_bookings);
     const revenue = formatNumber(Math.round(summary.total_revenue));
     const hours = formatNumber(summary.total_hours);
+    const userSpent = formatNumber(Math.round(summary.user_spent || 0));
+
+    // 4° riquadro solo se c'è filtro utente attivo
+    const userSpentBox = statsPlayerFilter ? `
+        <div style="background: linear-gradient(135deg, #9C27B0, #7B1FA2); padding: 1rem; border-radius: 8px; text-align: center;">
+            <div style="font-size: 1.8rem; font-weight: bold;">${userSpent}€</div>
+            <div style="font-size: 0.85rem; opacity: 0.9;">Spesa Utente</div>
+        </div>
+    ` : '';
 
     container.innerHTML = `
         <div style="background: linear-gradient(135deg, #4CAF50, #45a049); padding: 1rem; border-radius: 8px; text-align: center;">
@@ -3795,6 +3822,7 @@ function renderStatsSummary(summary) {
             <div style="font-size: 1.8rem; font-weight: bold;">${hours}</div>
             <div style="font-size: 0.85rem; opacity: 0.9;">Ore giocate</div>
         </div>
+        ${userSpentBox}
     `;
 }
 

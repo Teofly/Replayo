@@ -1864,6 +1864,7 @@ app.get('/api/stats/bookings', async (req, res) => {
     const totalResult = await pool.query(`
       SELECT COUNT(*) as total,
              SUM(b.total_price) as revenue,
+             SUM(b.price_per_player) as user_spent,
              SUM(b.duration_minutes) as total_minutes
       FROM bookings b
       JOIN courts c ON b.court_id = c.id
@@ -1961,6 +1962,7 @@ app.get('/api/stats/bookings', async (req, res) => {
       summary: {
         total_bookings: parseInt(totalResult.rows[0]?.total || 0),
         total_revenue: parseFloat(totalResult.rows[0]?.revenue || 0),
+        user_spent: parseFloat(totalResult.rows[0]?.user_spent || 0),
         total_hours: Math.round((parseInt(totalResult.rows[0]?.total_minutes || 0)) / 60)
       },
       by_sport: bySportResult.rows.map(r => ({
