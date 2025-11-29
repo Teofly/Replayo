@@ -3874,7 +3874,7 @@ app.get('/api/user/stats', async (req, res) => {
     const bookingsResult = await pool.query(`
       SELECT
         b.id, b.booking_date, b.start_time, b.end_time, b.duration_minutes,
-        b.status, b.total_price, c.sport_type, c.name as court_name
+        b.status, b.total_price, b.price_per_player, c.sport_type, c.name as court_name
       FROM bookings b
       JOIN courts c ON b.court_id = c.id
       WHERE (
@@ -3912,10 +3912,10 @@ app.get('/api/user/stats', async (req, res) => {
       totalHours += duration / 60;
     }
 
-    // Totale speso
+    // Totale speso (costo per singolo giocatore, non totale campo)
     let totalSpent = 0;
     for (const b of playedMatches) {
-      totalSpent += parseFloat(b.total_price) || 0;
+      totalSpent += parseFloat(b.price_per_player) || 0;
     }
 
     // Statistiche per sport

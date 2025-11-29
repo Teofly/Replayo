@@ -1054,10 +1054,10 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
       totalHours += duration / 60;
     }
 
-    // Total spent
+    // Total spent (per player cost, not total field cost)
     double totalSpent = 0;
     for (final booking in playedMatches) {
-      final price = double.tryParse(booking['total_price']?.toString() ?? '0') ?? 0;
+      final price = double.tryParse(booking['price_per_player']?.toString() ?? '0') ?? 0;
       totalSpent += price;
     }
 
